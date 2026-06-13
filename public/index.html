@@ -135,12 +135,28 @@ function App() {
 
   const save = useCallback(async (nd) => {
     try {
-      await api.save({ ...nd, lastUpdated: new Date().toISOString() });
+      await api.save(nd);
       setSaveMsg("✓ Guardado"); setTimeout(() => setSaveMsg(""), 2000);
     } catch { setSaveMsg("⚠️ Error"); setTimeout(() => setSaveMsg(""), 2000); }
   }, []);
 
-  const upd = useCallback((nd) => { setData(nd); save(nd); }, [save]);
+  const upd = useCallback((nd) => { const ts = { ...nd, lastUpdated: new Date().toISOString() }; setData(ts); save(ts); }, [save]);
+
+  // Auto-sync: reload data from server every 30 seconds to catch changes from other users
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const loaded = await api.load();
+        if (loaded) setData(prev => {
+          if (loaded.lastUpdated && prev.lastUpdated && loaded.lastUpdated > prev.lastUpdated) {
+            return deepMerge(createInitialData(), loaded);
+          }
+          return prev;
+        });
+      } catch {}
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (!data) return (
     <div style={{ background:C.bg, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"system-ui,sans-serif" }}>
