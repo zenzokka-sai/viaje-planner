@@ -4,568 +4,3134 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>✈️ Viaje Europa & Marruecos 2025</title>
+
+  <!-- Fuentes parisinas -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- React + Babel -->
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0f172a; font-family: system-ui, sans-serif; }
-    select option { background: #1e293b; color: #e2e8f0; }
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #1e293b; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-    input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.5); }
-    input[type=time]::-webkit-calendar-picker-indicator { filter: invert(0.5); }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#F5EAD0;font-family:'EB Garamond',Georgia,serif;color:#2C1810;}
+    h1,h2,h3,.serif{font-family:'Playfair Display',Georgia,serif;}
+
+    /* Textura de papel */
+    body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:9999;opacity:0.6;}
+
+    /* Scrollbar */
+    ::-webkit-scrollbar{width:6px;}
+    ::-webkit-scrollbar-track{background:#EDD9A3;}
+    ::-webkit-scrollbar-thumb{background:#A0785A;border-radius:3px;}
+
+    /* Leaflet overrides */
+    .leaflet-container{font-family:'EB Garamond',serif;}
+    .leaflet-popup-content-wrapper{background:#FDF6E3;border:1px solid #C4A46B;border-radius:8px;box-shadow:0 4px 20px rgba(44,24,16,0.15);}
+    .leaflet-popup-content{font-family:'EB Garamond',serif;color:#2C1810;font-size:14px;}
+    .leaflet-popup-tip{background:#FDF6E3;}
+
+    /* Date/time inputs */
+    input[type=date]::-webkit-calendar-picker-indicator,
+    input[type=time]::-webkit-calendar-picker-indicator{filter:sepia(1) hue-rotate(330deg) opacity(0.5);cursor:pointer;}
+
+    select option{background:#FDF6E3;color:#2C1810;}
+
+    /* Ornamento */
+    .ornament{text-align:center;color:#C4A46B;font-size:18px;letter-spacing:8px;margin:6px 0;}
   </style>
 </head>
 <body>
   <div id="root"></div>
 
-<script type="text/babel">
-const { useState, useEffect, useCallback, useRef } = React;
-
-// ─── API storage (reads/writes to server JSON file) ───────────────
+<script>
+const {
+  useState,
+  useEffect,
+  useCallback,
+  useRef
+} = React;
 const api = {
   async load() {
     try {
       const r = await fetch("/api/data");
       const j = await r.json();
       return j.value ? JSON.parse(j.value) : null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   },
   async save(data) {
     try {
       await fetch("/api/data", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: JSON.stringify(data) }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          value: JSON.stringify(data)
+        })
       });
-    } catch (e) { console.error("Error guardando:", e); }
-  },
+    } catch (e) {
+      console.error(e);
+    }
+  }
 };
-
-// ─── Constants ────────────────────────────────────────────────────
-const DEST = [
-  { id:"madrid",    name:"Madrid",    flag:"🇪🇸", color:"#FF6B6B", days:[1,2,3],       x:150, y:185 },
-  { id:"paris",     name:"París",     flag:"🇫🇷", color:"#4ECDC4", days:[4,5,6,7],     x:235, y:108 },
-  { id:"brussels",  name:"Bruselas",  flag:"🇧🇪", color:"#FFE66D", days:[8,9],         x:285, y:80  },
-  { id:"berlin",    name:"Berlín",    flag:"🇩🇪", color:"#95E1D3", days:[10,11,12],    x:375, y:72  },
-  { id:"rome",      name:"Roma",      flag:"🇮🇹", color:"#F38181", days:[13,14,15,16], x:360, y:190 },
-  { id:"marrakech", name:"Marrakech", flag:"🇲🇦", color:"#FCE38A", days:[17,18,19,20], x:115, y:275 },
-];
-const BUDGET_CATS = [
-  {id:"vuelos",label:"Vuelos"},{id:"aloj",label:"Alojamiento"},{id:"comida",label:"Comida"},
-  {id:"transp",label:"Transporte"},{id:"activ",label:"Actividades"},{id:"compras",label:"Compras"},{id:"otros",label:"Otros"},
-];
-const TRANSPORT_TYPES = ["Vuelo","Tren","Bus","Ferry","Auto"];
-const STAY_TYPES = ["Hotel","Airbnb","Hostel","Camping","Casa particular"];
-const PIN_TYPES = [
-  {id:"hotel",label:"Hotel",emoji:"🏨"},{id:"bar",label:"Bar / Pub",emoji:"🍺"},
-  {id:"restaurant",label:"Restaurante",emoji:"🍽️"},{id:"museum",label:"Museo",emoji:"🏛️"},
-  {id:"shop",label:"Tienda",emoji:"🛍️"},{id:"park",label:"Parque",emoji:"🌿"},
-  {id:"transport",label:"Transporte",emoji:"🚇"},{id:"attraction",label:"Atracción",emoji:"⭐"},
-  {id:"street",label:"Calle / Barrio",emoji:"🏙️"},{id:"other",label:"Otro",emoji:"📍"},
-];
-const TABS = [
-  {id:"mapa",icon:"🗺️",label:"Mapa"},{id:"itinerario",icon:"📅",label:"Itinerario"},
-  {id:"presupuesto",icon:"💰",label:"Presupuesto"},{id:"estadias",icon:"🏨",label:"Estadías"},
-  {id:"transporte",icon:"🚆",label:"Transporte"},{id:"notas",icon:"📝",label:"Notas"},
-];
-
+const PALETTE = ["#B5451B", "#1B6B5A", "#7A5C1E", "#1B4A6B", "#6B2D1B", "#4A6B1B", "#5C1B6B", "#1B6B35", "#6B1B45", "#1B356B"];
+const FLAG_MAP = {
+  es: "🇪🇸",
+  fr: "🇫🇷",
+  be: "🇧🇪",
+  de: "🇩🇪",
+  it: "🇮🇹",
+  ma: "🇲🇦",
+  gb: "🇬🇧",
+  pt: "🇵🇹",
+  nl: "🇳🇱",
+  ch: "🇨🇭",
+  at: "🇦🇹",
+  cz: "🇨🇿",
+  pl: "🇵🇱",
+  gr: "🇬🇷",
+  hr: "🇭🇷",
+  hu: "🇭🇺",
+  ro: "🇷🇴",
+  tr: "🇹🇷",
+  tn: "🇹🇳",
+  dz: "🇩🇿",
+  eg: "🇪🇬",
+  th: "🇹🇭",
+  jp: "🇯🇵",
+  vn: "🇻🇳",
+  in: "🇮🇳",
+  au: "🇦🇺",
+  ca: "🇨🇦",
+  no: "🇳🇴",
+  se: "🇸🇪",
+  dk: "🇩🇰",
+  fi: "🇫🇮",
+  sk: "🇸🇰",
+  rs: "🇷🇸",
+  si: "🇸🇮",
+  bg: "🇧🇬",
+  lu: "🇱🇺",
+  mt: "🇲🇹",
+  cy: "🇨🇾",
+  is: "🇮🇸",
+  ie: "🇮🇪",
+  mx: "🇲🇽",
+  ar: "🇦🇷",
+  br: "🇧🇷",
+  us: "🇺🇸",
+  cn: "🇨🇳"
+};
+const DEFAULT_DESTS = [{
+  id: "madrid",
+  name: "Madrid",
+  flag: "🇪🇸",
+  color: "#B5451B",
+  latlng: [40.4168, -3.7038],
+  nights: 3,
+  startDate: ""
+}, {
+  id: "paris",
+  name: "París",
+  flag: "🇫🇷",
+  color: "#1B6B5A",
+  latlng: [48.8566, 2.3522],
+  nights: 4,
+  startDate: ""
+}, {
+  id: "brussels",
+  name: "Bruselas",
+  flag: "🇧🇪",
+  color: "#7A5C1E",
+  latlng: [50.8503, 4.3517],
+  nights: 2,
+  startDate: ""
+}, {
+  id: "berlin",
+  name: "Berlín",
+  flag: "🇩🇪",
+  color: "#1B4A6B",
+  latlng: [52.5200, 13.4050],
+  nights: 3,
+  startDate: ""
+}, {
+  id: "rome",
+  name: "Roma",
+  flag: "🇮🇹",
+  color: "#6B2D1B",
+  latlng: [41.9028, 12.4964],
+  nights: 4,
+  startDate: ""
+}, {
+  id: "marrakech",
+  name: "Marrakech",
+  flag: "🇲🇦",
+  color: "#7A5C1E",
+  latlng: [31.6295, -7.9811],
+  nights: 4,
+  startDate: ""
+}];
+const PIN_TYPES = [{
+  id: "hotel",
+  label: "Hotel",
+  emoji: "🏨"
+}, {
+  id: "bar",
+  label: "Bar / Café",
+  emoji: "☕"
+}, {
+  id: "restaurant",
+  label: "Restaurante",
+  emoji: "🍽️"
+}, {
+  id: "museum",
+  label: "Museo",
+  emoji: "🏛️"
+}, {
+  id: "shop",
+  label: "Tienda",
+  emoji: "🛍️"
+}, {
+  id: "park",
+  label: "Parque",
+  emoji: "🌿"
+}, {
+  id: "transport",
+  label: "Transporte",
+  emoji: "🚇"
+}, {
+  id: "attraction",
+  label: "Atracción",
+  emoji: "⭐"
+}, {
+  id: "street",
+  label: "Calle / Barrio",
+  emoji: "🏙️"
+}, {
+  id: "other",
+  label: "Otro",
+  emoji: "📍"
+}];
+const BUDGET_CATS = [{
+  id: "vuelos",
+  label: "Vuelos",
+  icon: "✈️"
+}, {
+  id: "aloj",
+  label: "Alojamiento",
+  icon: "🏨"
+}, {
+  id: "comida",
+  label: "Comida",
+  icon: "🍽️"
+}, {
+  id: "transp",
+  label: "Transporte",
+  icon: "🚆"
+}, {
+  id: "activ",
+  label: "Actividades",
+  icon: "🎭"
+}, {
+  id: "compras",
+  label: "Compras",
+  icon: "🛍️"
+}, {
+  id: "otros",
+  label: "Otros",
+  icon: "💼"
+}];
+const TRANSPORT_TYPES = ["Vuelo", "Tren", "Bus", "Ferry", "Auto"];
+const STAY_TYPES = ["Hotel", "Airbnb", "Hostel", "Camping", "Casa particular"];
+const TABS = [{
+  id: "mapa",
+  icon: "🗺️",
+  label: "Mapa"
+}, {
+  id: "itinerario",
+  icon: "📅",
+  label: "Itinerario"
+}, {
+  id: "presupuesto",
+  icon: "💰",
+  label: "Presupuesto"
+}, {
+  id: "estadias",
+  icon: "🏨",
+  label: "Estadías"
+}, {
+  id: "transporte",
+  icon: "🚆",
+  label: "Transporte"
+}, {
+  id: "notas",
+  icon: "📝",
+  label: "Notas"
+}];
 function createInitialData() {
   const itinerary = {};
-  DEST.forEach(d => d.days.forEach(day => {
-    itinerary[`day${day}`] = { dest:d.id, title:"", activities:"", meals:"", notes:"" };
-  }));
+  DEFAULT_DESTS.forEach(d => {
+    itinerary[d.id] = {};
+    for (let i = 1; i <= 15; i++) itinerary[d.id][`day${i}`] = {
+      title: "",
+      activities: "",
+      meals: "",
+      notes: ""
+    };
+  });
   const budget = {};
-  BUDGET_CATS.forEach(c => { budget[c.id] = { limit:"", expenses:[] }; });
+  BUDGET_CATS.forEach(c => {
+    budget[c.id] = {
+      limit: "",
+      expenses: []
+    };
+  });
   const stays = {};
-  DEST.forEach(d => { stays[d.id] = { name:"",type:"",checkIn:"",checkOut:"",pricePerNight:"",link:"",notes:"" }; });
-  const transport = [
-    {id:"t1",from:"madrid",to:"paris",type:"Vuelo",date:"",time:"",cost:"",booking:"",notes:""},
-    {id:"t2",from:"paris",to:"brussels",type:"Tren",date:"",time:"",cost:"",booking:"",notes:""},
-    {id:"t3",from:"brussels",to:"berlin",type:"Tren",date:"",time:"",cost:"",booking:"",notes:""},
-    {id:"t4",from:"berlin",to:"rome",type:"Vuelo",date:"",time:"",cost:"",booking:"",notes:""},
-    {id:"t5",from:"rome",to:"marrakech",type:"Vuelo",date:"",time:"",cost:"",booking:"",notes:""},
-    {id:"t6",from:"marrakech",to:"madrid",type:"Vuelo",date:"",time:"",cost:"",booking:"",notes:""},
-  ];
+  DEFAULT_DESTS.forEach(d => {
+    stays[d.id] = {
+      name: "",
+      type: "",
+      checkIn: "",
+      checkOut: "",
+      pricePerNight: "",
+      link: "",
+      notes: ""
+    };
+  });
+  const transport = [{
+    id: "t1",
+    from: "madrid",
+    to: "paris",
+    type: "Vuelo",
+    date: "",
+    time: "",
+    cost: "",
+    booking: "",
+    notes: ""
+  }, {
+    id: "t2",
+    from: "paris",
+    to: "brussels",
+    type: "Tren",
+    date: "",
+    time: "",
+    cost: "",
+    booking: "",
+    notes: ""
+  }, {
+    id: "t3",
+    from: "brussels",
+    to: "berlin",
+    type: "Tren",
+    date: "",
+    time: "",
+    cost: "",
+    booking: "",
+    notes: ""
+  }, {
+    id: "t4",
+    from: "berlin",
+    to: "rome",
+    type: "Vuelo",
+    date: "",
+    time: "",
+    cost: "",
+    booking: "",
+    notes: ""
+  }, {
+    id: "t5",
+    from: "rome",
+    to: "marrakech",
+    type: "Vuelo",
+    date: "",
+    time: "",
+    cost: "",
+    booking: "",
+    notes: ""
+  }, {
+    id: "t6",
+    from: "marrakech",
+    to: "madrid",
+    type: "Vuelo",
+    date: "",
+    time: "",
+    cost: "",
+    booking: "",
+    notes: ""
+  }];
   const pins = {};
-  DEST.forEach(d => { pins[d.id] = []; });
-  return { travelers:["Sebastián","Viajero 2","Viajero 3","Viajero 4"], itinerary, budget, stays, transport, pins,
-           notes:{general:"",checklist:[]}, lastUpdated:"" };
+  DEFAULT_DESTS.forEach(d => {
+    pins[d.id] = [];
+  });
+  return {
+    travelers: ["Sebastián", "Viajero 2", "Viajero 3", "Viajero 4"],
+    destConfig: [...DEFAULT_DESTS],
+    itinerary,
+    budget,
+    stays,
+    transport,
+    pins,
+    notes: {
+      general: "",
+      checklist: []
+    },
+    lastUpdated: ""
+  };
 }
-
 function deepMerge(target, source) {
-  const result = { ...target };
+  const result = {
+    ...target
+  };
   for (const key of Object.keys(source)) {
-    if (source[key] && typeof source[key]==="object" && !Array.isArray(source[key]))
-      result[key] = deepMerge(target[key]||{}, source[key]);
-    else result[key] = source[key];
+    if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) result[key] = deepMerge(target[key] || {}, source[key]);else result[key] = source[key];
   }
   return result;
 }
 
-// ─── Styles ───────────────────────────────────────────────────────
-const C = { bg:"#0f172a",surf:"#1e293b",surf2:"#253347",accent:"#38bdf8",text:"#e2e8f0",muted:"#94a3b8",border:"#334155" };
-const inp = { background:C.surf2, border:`1px solid ${C.border}`, borderRadius:6, color:C.text, padding:"7px 10px", fontSize:13, width:"100%", outline:"none", boxSizing:"border-box", fontFamily:"system-ui,sans-serif" };
-const ta  = { ...inp, resize:"vertical", minHeight:80 };
-const lbl = { fontSize:11, color:C.muted, marginBottom:3, display:"block" };
-const card = { background:C.surf, border:`1px solid ${C.border}`, borderRadius:10, padding:16, marginBottom:12 };
-function btn(v="primary") {
-  return { padding:"7px 15px", borderRadius:7, border:"none", cursor:"pointer", fontSize:13, fontWeight:500,
-    background:v==="primary"?C.accent:v==="danger"?"#f87171":C.border,
-    color:v==="primary"?"#0f172a":C.text };
+/* ── DESIGN TOKENS ──────────────────────────────────────────── */
+const C = {
+  bg: "#F8F2E6",
+  surf: "#FFFFFF",
+  surf2: "#FDF8F0",
+  surfHover: "#FBF5E8",
+  burg: "#7C2D35",
+  burgLight: "#F9EDEE",
+  burgDark: "#5C1F25",
+  gold: "#B8902A",
+  goldLight: "#FBF5E2",
+  text: "#1C1008",
+  textSec: "#6B5744",
+  textMut: "#9B8A7A",
+  border: "#E2D5C0",
+  borderStrong: "#C8B89A",
+  shadow: "0 1px 3px rgba(28,16,8,0.08), 0 4px 12px rgba(28,16,8,0.05)",
+  shadowMd: "0 4px 16px rgba(28,16,8,0.12), 0 1px 4px rgba(28,16,8,0.08)",
+  green: "#1B6B3A",
+  greenLight: "#E8F5ED",
+  red: "#B5451B",
+  redLight: "#FDF0EB",
+  blue: "#1B456B",
+  blueLight: "#E8EFF5"
+};
+
+/* ── BASE STYLES ────────────────────────────────────────────── */
+const inp = focus => ({
+  background: C.surf,
+  border: `1.5px solid ${focus ? C.burg : C.border}`,
+  borderRadius: 8,
+  color: C.text,
+  padding: "9px 12px",
+  fontSize: 14,
+  width: "100%",
+  outline: "none",
+  boxSizing: "border-box",
+  fontFamily: "'EB Garamond',serif",
+  transition: "border-color 0.15s"
+});
+const baseinp = {
+  background: C.surf,
+  border: `1.5px solid ${C.border}`,
+  borderRadius: 8,
+  color: C.text,
+  padding: "9px 12px",
+  fontSize: 14,
+  width: "100%",
+  outline: "none",
+  boxSizing: "border-box",
+  fontFamily: "'EB Garamond',serif"
+};
+const baseta = {
+  ...baseinp,
+  resize: "vertical",
+  minHeight: 90,
+  lineHeight: 1.6
+};
+const lbl = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: C.textMut,
+  marginBottom: 5,
+  display: "block",
+  textTransform: "uppercase",
+  letterSpacing: "0.7px"
+};
+const card = {
+  background: C.surf,
+  border: `1px solid ${C.border}`,
+  borderRadius: 14,
+  padding: 20,
+  marginBottom: 16,
+  boxShadow: C.shadow
+};
+const cardSm = {
+  background: C.surf,
+  border: `1px solid ${C.border}`,
+  borderRadius: 10,
+  padding: 14,
+  boxShadow: C.shadow
+};
+function Btn({
+  v = "primary",
+  children,
+  onClick,
+  disabled,
+  style = {},
+  small = false
+}) {
+  const [hov, setHov] = useState(false);
+  const base = {
+    padding: small ? "5px 12px" : "8px 18px",
+    borderRadius: 8,
+    border: "1.5px solid",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: small ? 13 : 14,
+    fontWeight: 600,
+    fontFamily: "'EB Garamond',serif",
+    letterSpacing: "0.2px",
+    transition: "all 0.15s",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    opacity: disabled ? 0.5 : 1
+  };
+  const styles = {
+    primary: {
+      background: hov && !disabled ? C.burgDark : C.burg,
+      borderColor: hov && !disabled ? C.burgDark : C.burg,
+      color: "#FFF"
+    },
+    secondary: {
+      background: hov && !disabled ? C.surfHover : C.surf,
+      borderColor: C.borderStrong,
+      color: C.textSec
+    },
+    ghost: {
+      background: hov && !disabled ? "rgba(0,0,0,0.04)" : "transparent",
+      borderColor: "transparent",
+      color: C.textSec
+    },
+    danger: {
+      background: hov && !disabled ? "#A03010" : C.red,
+      borderColor: hov && !disabled ? "#A03010" : C.red,
+      color: "#FFF"
+    },
+    success: {
+      background: hov && !disabled ? "#155C30" : C.green,
+      borderColor: hov && !disabled ? "#155C30" : C.green,
+      color: "#FFF"
+    }
+  };
+  return /*#__PURE__*/React.createElement("button", {
+    style: {
+      ...base,
+      ...(styles[v] || styles.primary),
+      ...style
+    },
+    onClick: onClick,
+    disabled: disabled,
+    onMouseEnter: () => setHov(true),
+    onMouseLeave: () => setHov(false)
+  }, children);
+}
+function Badge({
+  children,
+  color = C.burg
+}) {
+  return /*#__PURE__*/React.createElement("span", {
+    style: {
+      background: color + "18",
+      color,
+      borderRadius: 20,
+      padding: "2px 10px",
+      fontSize: 12,
+      fontWeight: 600,
+      border: `1px solid ${color}30`
+    }
+  }, children);
+}
+function EmptyState({
+  icon,
+  title,
+  desc,
+  action
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      padding: "40px 20px",
+      color: C.textMut
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 40,
+      marginBottom: 12
+    }
+  }, icon), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 600,
+      color: C.textSec,
+      marginBottom: 6,
+      fontFamily: "'Playfair Display',serif"
+    }
+  }, title), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      marginBottom: action ? 16 : 0,
+      lineHeight: 1.6
+    }
+  }, desc), action);
+}
+async function geocodeCity(name) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(name)}&limit=1&addressdetails=1`;
+  const r = await fetch(url, {
+    headers: {
+      "Accept-Language": "es"
+    }
+  });
+  const data = await r.json();
+  if (!data[0]) return null;
+  const cc = (data[0].address?.country_code || "").toLowerCase();
+  return {
+    name: data[0].address?.city || data[0].address?.town || data[0].address?.village || name,
+    latlng: [parseFloat(data[0].lat), parseFloat(data[0].lon)],
+    flag: FLAG_MAP[cc] || "🌍"
+  };
 }
 
-// ─── Main App ─────────────────────────────────────────────────────
+/* ── APP ROOT ────────────────────────────────────────────────── */
 function App() {
-  const [data, setData]       = useState(null);
-  const [tab, setTab]         = useState("mapa");
+  const [data, setData] = useState(null);
+  const [tab, setTab] = useState("mapa");
   const [saveMsg, setSaveMsg] = useState("");
+  const [saving, setSaving] = useState(false);
   const [selDest, setSelDest] = useState(null);
-  const [selDay, setSelDay]   = useState(1);
+  const [selDay, setSelDay] = useState({
+    dest: "madrid",
+    idx: 1
+  });
   const [budgetCat, setBudgetCat] = useState("vuelos");
-
   useEffect(() => {
     (async () => {
       const loaded = await api.load();
       setData(loaded ? deepMerge(createInitialData(), loaded) : createInitialData());
     })();
   }, []);
-
-  const save = useCallback(async (nd) => {
+  const save = useCallback(async nd => {
+    setSaving(true);
     try {
       await api.save(nd);
-      setSaveMsg("✓ Guardado"); setTimeout(() => setSaveMsg(""), 2000);
-    } catch { setSaveMsg("⚠️ Error"); setTimeout(() => setSaveMsg(""), 2000); }
+      setSaveMsg("Guardado");
+      setTimeout(() => setSaveMsg(""), 3000);
+    } catch {
+      setSaveMsg("Error al guardar");
+    }
+    setSaving(false);
   }, []);
-
-  const upd = useCallback((nd) => { const ts = { ...nd, lastUpdated: new Date().toISOString() }; setData(ts); save(ts); }, [save]);
-
-  // Auto-sync: reload data from server every 30 seconds to catch changes from other users
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const loaded = await api.load();
-        if (loaded) setData(prev => {
-          if (loaded.lastUpdated && prev.lastUpdated && loaded.lastUpdated > prev.lastUpdated) {
-            return deepMerge(createInitialData(), loaded);
-          }
-          return prev;
-        });
-      } catch {}
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (!data) return (
-    <div style={{ background:C.bg, height:"100vh", display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontFamily:"system-ui,sans-serif" }}>
-      <div style={{ textAlign:"center" }}><div style={{ fontSize:36, marginBottom:10 }}>🗺️</div><div>Cargando...</div></div>
-    </div>
-  );
-
-  return (
-    <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"system-ui,sans-serif", fontSize:14 }}>
-      <div style={{ background:C.surf, borderBottom:`1px solid ${C.border}`, padding:"12px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <div>
-          <div style={{ fontWeight:700, fontSize:17 }}>✈️ Europa & Marruecos 2025</div>
-          <div style={{ fontSize:12, color:C.muted }}>20 días · {data.travelers.join(" · ")}</div>
-        </div>
-        <div style={{ fontSize:12, color:saveMsg?C.accent:"#475569" }}>
-          {saveMsg||(data.lastUpdated?`Guardado ${new Date(data.lastUpdated).toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"})}`:"Sin guardar")}
-        </div>
-      </div>
-      <div style={{ display:"flex", gap:2, padding:"8px 16px", background:C.surf, borderBottom:`1px solid ${C.border}`, overflowX:"auto" }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding:"6px 14px", border:"none", borderRadius:7, cursor:"pointer", fontSize:13,
-            fontWeight:tab===t.id?600:400, whiteSpace:"nowrap", transition:"all 0.15s",
-            background:tab===t.id?C.accent:"transparent", color:tab===t.id?"#0f172a":C.muted,
-          }}>{t.icon} {t.label}</button>
-        ))}
-      </div>
-      <div style={{ padding:20 }}>
-        {tab==="mapa"        && <MapTab        data={data} upd={upd} selDest={selDest} setSelDest={setSelDest} setTab={setTab} setSelDay={setSelDay}/>}
-        {tab==="itinerario"  && <ItinTab       data={data} upd={upd} selDay={selDay} setSelDay={setSelDay}/>}
-        {tab==="presupuesto" && <BudgetTab     data={data} upd={upd} budgetCat={budgetCat} setBudgetCat={setBudgetCat}/>}
-        {tab==="estadias"    && <StaysTab      data={data} upd={upd}/>}
-        {tab==="transporte"  && <TransportTab  data={data} upd={upd}/>}
-        {tab==="notas"       && <NotesTab      data={data} upd={upd}/>}
-      </div>
-    </div>
-  );
+  const upd = useCallback(nd => {
+    const ts = {
+      ...nd,
+      lastUpdated: new Date().toISOString()
+    };
+    setData(ts);
+    save(ts);
+  }, [save]);
+  if (!data) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.bg,
+      height: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      fontFamily: "'Playfair Display',serif",
+      color: C.burg
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 48,
+      height: 48,
+      border: `3px solid ${C.burg}`,
+      borderTopColor: "transparent",
+      borderRadius: "50%",
+      animation: "spin 0.8s linear infinite",
+      marginBottom: 16
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 18,
+      fontStyle: "italic",
+      color: C.textSec
+    }
+  }, "Cargando tu viaje..."), /*#__PURE__*/React.createElement("style", null, `@keyframes spin{to{transform:rotate(360deg)}}`));
+  const dests = data.destConfig || DEFAULT_DESTS;
+  const totalNights = dests.reduce((s, d) => s + parseInt(d.nights || 0), 0);
+  const totalBudget = Object.values(data.budget).reduce((s, c) => s + parseFloat(c.limit || 0), 0);
+  const totalSpent = Object.values(data.budget).reduce((s, c) => s + c.expenses.reduce((ss, e) => ss + parseFloat(e.amount || 0), 0), 0);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: C.bg,
+      color: C.text,
+      fontFamily: "'EB Garamond',serif",
+      fontSize: 15
+    }
+  }, /*#__PURE__*/React.createElement("style", null, `
+        *{box-sizing:border-box;}
+        input:focus,textarea:focus,select:focus{border-color:${C.burg}!important;box-shadow:0 0 0 3px ${C.burg}18;}
+        input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-calendar-picker-indicator{opacity:0.4;cursor:pointer;}
+        select option{background:${C.surf};color:${C.text};}
+        ::-webkit-scrollbar{width:5px;height:5px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        ::-webkit-scrollbar-thumb{background:${C.borderStrong};border-radius:3px;}
+      `), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: `linear-gradient(135deg, #4A1520 0%, ${C.burg} 50%, #6B2030 100%)`,
+      boxShadow: "0 4px 24px rgba(28,16,8,0.2)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 1300,
+      margin: "0 auto",
+      padding: "0 24px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 24,
+      padding: "14px 0",
+      borderBottom: "1px solid rgba(255,255,255,0.1)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 22,
+      fontWeight: 700,
+      color: "#FFF",
+      letterSpacing: "0.3px"
+    }
+  }, "✈️ Europa & Marruecos ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 400,
+      fontStyle: "italic",
+      fontSize: 18,
+      opacity: 0.85
+    }
+  }, "2025")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "rgba(255,255,255,0.65)",
+      marginTop: 2
+    }
+  }, data.travelers.filter(Boolean).join(" · "))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 16,
+      alignItems: "center"
+    }
+  }, [{
+    v: totalNights,
+    l: "noches"
+  }, {
+    v: dests.length,
+    l: "ciudades"
+  }, {
+    v: `€${Math.round(totalSpent)}`,
+    l: "gastado"
+  }].map(s => /*#__PURE__*/React.createElement("div", {
+    key: s.l,
+    style: {
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 18,
+      fontWeight: 700,
+      color: "#FFF",
+      fontFamily: "'Playfair Display',serif"
+    }
+  }, s.v), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "rgba(255,255,255,0.55)",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px"
+    }
+  }, s.l)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: saving ? "rgba(255,255,255,0.9)" : saveMsg ? "rgba(200,255,200,0.9)" : "rgba(255,255,255,0.4)",
+      fontStyle: "italic",
+      minWidth: 90,
+      textAlign: "right"
+    }
+  }, saving ? "Guardando…" : saveMsg || (data.lastUpdated ? `Guardado ${new Date(data.lastUpdated).toLocaleTimeString("es", {
+    hour: "2-digit",
+    minute: "2-digit"
+  })}` : "Sin guardar"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 0
+    }
+  }, TABS.map(t => {
+    const active = tab === t.id;
+    return /*#__PURE__*/React.createElement("button", {
+      key: t.id,
+      onClick: () => setTab(t.id),
+      style: {
+        padding: "12px 20px",
+        border: "none",
+        borderBottom: active ? "3px solid #FFF" : "3px solid transparent",
+        cursor: "pointer",
+        fontSize: 13,
+        fontFamily: "'EB Garamond',serif",
+        fontWeight: active ? 600 : 400,
+        background: "transparent",
+        color: active ? "#FFF" : "rgba(255,255,255,0.55)",
+        whiteSpace: "nowrap",
+        transition: "all 0.2s",
+        letterSpacing: "0.2px"
+      }
+    }, t.icon, " ", t.label);
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 1300,
+      margin: "0 auto",
+      padding: "24px 24px"
+    }
+  }, tab === "mapa" && /*#__PURE__*/React.createElement(MapTab, {
+    data: data,
+    upd: upd,
+    selDest: selDest,
+    setSelDest: setSelDest,
+    setTab: setTab,
+    setSelDay: setSelDay
+  }), tab === "itinerario" && /*#__PURE__*/React.createElement(ItinTab, {
+    data: data,
+    upd: upd,
+    selDay: selDay,
+    setSelDay: setSelDay
+  }), tab === "presupuesto" && /*#__PURE__*/React.createElement(BudgetTab, {
+    data: data,
+    upd: upd,
+    budgetCat: budgetCat,
+    setBudgetCat: setBudgetCat
+  }), tab === "estadias" && /*#__PURE__*/React.createElement(StaysTab, {
+    data: data,
+    upd: upd
+  }), tab === "transporte" && /*#__PURE__*/React.createElement(TransportTab, {
+    data: data,
+    upd: upd
+  }), tab === "notas" && /*#__PURE__*/React.createElement(NotesTab, {
+    data: data,
+    upd: upd
+  })));
 }
 
-// ─── MAP TAB ──────────────────────────────────────────────────────
-function MapTab({ data, upd, selDest, setSelDest, setTab, setSelDay }) {
-  const [mapMode, setMapMode]   = useState("select");
-  const [pinType, setPinType]   = useState("hotel");
+/* ── MAP TAB ─────────────────────────────────────────────────── */
+function MapTab({
+  data,
+  upd,
+  selDest,
+  setSelDest,
+  setTab,
+  setSelDay
+}) {
+  const mapDivRef = useRef(null);
+  const mapRef = useRef(null);
+  const cityMarkersRef = useRef({});
+  const routeLineRef = useRef(null);
+  const pinLayerRef = useRef(null);
+  const pendingMarkerRef = useRef(null);
+  const [mapMode, setMapMode] = useState("select");
+  const [pinType, setPinType] = useState("hotel");
   const [pendingPin, setPending] = useState(null);
-  const [pinName, setPinName]   = useState("");
+  const [pinName, setPinName] = useState("");
   const [pinNotes, setPinNotes] = useState("");
-  const [zoomed, setZoomed]     = useState(false);
-  const [selPin, setSelPin]     = useState(null);
-  const svgRef = useRef(null);
-
-  const dest     = selDest ? DEST.find(d => d.id===selDest) : null;
-  const destPins = selDest ? (data.pins?.[selDest]||[]) : [];
-  const allPins  = Object.entries(data.pins||{}).flatMap(([did,ps]) =>
-    ps.map(p => ({ ...p, destId:did, destColor:DEST.find(d=>d.id===did)?.color||"#888" }))
-  );
-
-  useEffect(() => { if (!selDest) { setZoomed(false); setPending(null); } }, [selDest]);
-
-  const getViewBox = () => {
-    if (!zoomed||!selDest) return "0 0 500 310";
-    const d = DEST.find(x=>x.id===selDest);
-    const w=130, h=80;
-    return `${Math.max(0,Math.min(370,d.x-w/2))} ${Math.max(0,Math.min(230,d.y-h/2))} ${w} ${h}`;
-  };
-
-  const handleSvgClick = (e) => {
-    if (mapMode!=="pin"||!selDest) return;
-    const svg=svgRef.current; if(!svg) return;
-    const rect=svg.getBoundingClientRect();
-    const [vbX,vbY,vbW,vbH]=getViewBox().split(" ").map(Number);
-    const x=Math.round(vbX+(e.clientX-rect.left)/rect.width*vbW);
-    const y=Math.round(vbY+(e.clientY-rect.top)/rect.height*vbH);
-    setPending({x,y}); setPinName(""); setPinNotes(""); setSelPin(null);
-  };
-
+  const [showAddCity, setShowAddCity] = useState(false);
+  const [citySearch, setCitySearch] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState("");
+  const dests = data.destConfig || DEFAULT_DESTS;
+  const dest = selDest ? dests.find(d => d.id === selDest) : null;
+  const destPins = selDest ? data.pins?.[selDest] || [] : [];
+  useEffect(() => {
+    if (!mapDivRef.current || mapRef.current) return;
+    const L = window.L;
+    const map = L.map(mapDivRef.current, {
+      center: [47, 8],
+      zoom: 4,
+      zoomControl: true
+    });
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org">OSM</a> © <a href="https://carto.com">CARTO</a>',
+      maxZoom: 19
+    }).addTo(map);
+    pinLayerRef.current = L.layerGroup().addTo(map);
+    map.on("click", e => map.fire("_pinclick", {
+      latlng: e.latlng
+    }));
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const L = window.L;
+    Object.values(cityMarkersRef.current).forEach(m => m.remove());
+    cityMarkersRef.current = {};
+    if (routeLineRef.current) {
+      routeLineRef.current.remove();
+      routeLineRef.current = null;
+    }
+    if (dests.length > 1) {
+      const coords = [...dests.map(d => d.latlng), dests[0].latlng];
+      routeLineRef.current = L.polyline(coords, {
+        color: C.burg,
+        weight: 2.5,
+        dashArray: "8,5",
+        opacity: 0.6
+      }).addTo(map);
+    }
+    dests.forEach((d, i) => {
+      const isSelected = selDest === d.id;
+      const html = `<div style="position:relative;"><div style="width:${isSelected ? 20 : 14}px;height:${isSelected ? 20 : 14}px;background:${d.color};border:${isSelected ? "3px" : "2px"} solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.3);cursor:pointer;transition:all 0.2s;"></div><div style="position:absolute;top:-22px;left:50%;transform:translateX(-50%);background:rgba(28,16,8,0.8);color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;white-space:nowrap;font-family:EB Garamond,serif;">${d.flag} ${d.name}</div></div>`;
+      const icon = L.divIcon({
+        html,
+        className: "",
+        iconSize: [isSelected ? 20 : 14, isSelected ? 20 : 14],
+        iconAnchor: [isSelected ? 10 : 7, isSelected ? 10 : 7]
+      });
+      const marker = L.marker(d.latlng, {
+        icon
+      }).addTo(map);
+      marker.on("click", () => setSelDest(prev => prev === d.id ? null : d.id));
+      cityMarkersRef.current[d.id] = marker;
+    });
+  }, [dests, selDest]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const handler = e => {
+      if (mapMode !== "pin" || !selDest) return;
+      if (pendingMarkerRef.current) pendingMarkerRef.current.remove();
+      const L = window.L;
+      const html = `<div style="width:16px;height:16px;background:${C.gold};border:2.5px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.3);animation:pulse 1s infinite;"></div>`;
+      const icon = L.divIcon({
+        html,
+        className: "",
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      pendingMarkerRef.current = L.marker([e.latlng.lat, e.latlng.lng], {
+        icon
+      }).addTo(map);
+      setPending({
+        lat: e.latlng.lat,
+        lng: e.latlng.lng
+      });
+      setPinName("");
+      setPinNotes("");
+    };
+    map.on("_pinclick", handler);
+    return () => map.off("_pinclick", handler);
+  }, [mapMode, selDest]);
+  useEffect(() => {
+    const layer = pinLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    const L = window.L;
+    Object.entries(data.pins || {}).forEach(([did, pins]) => {
+      const dc = dests.find(d => d.id === did)?.color || "#888";
+      pins.forEach(pin => {
+        const pt = PIN_TYPES.find(p => p.id === pin.type) || PIN_TYPES[9];
+        const html = `<div style="background:${dc};color:#fff;width:30px;height:30px;border-radius:50% 50% 50% 0;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.25);transform:rotate(-45deg)"><span style="transform:rotate(45deg)">${pt.emoji}</span></div>`;
+        const icon = L.divIcon({
+          html,
+          className: "",
+          iconSize: [30, 30],
+          iconAnchor: [10, 30]
+        });
+        const m = L.marker([pin.lat, pin.lng], {
+          icon
+        }).addTo(layer);
+        m.bindPopup(`<b style="font-family:'EB Garamond',serif;font-size:14px">${pt.emoji} ${pin.name}</b>${pin.notes ? `<br><small style="color:#6B5744">${pin.notes}</small>` : ""}`);
+      });
+    });
+  }, [data.pins, dests]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selDest) return;
+    const d = dests.find(x => x.id === selDest);
+    if (d) map.flyTo(d.latlng, 13, {
+      duration: 1.2
+    });
+  }, [selDest]);
   const confirmPin = () => {
-    if (!pendingPin||!pinName.trim()) return;
-    const pin={id:Date.now(),name:pinName.trim(),type:pinType,x:pendingPin.x,y:pendingPin.y,notes:pinNotes};
-    const p2={...(data.pins||{})}; p2[selDest]=[...(p2[selDest]||[]),pin];
-    upd({...data,pins:p2}); setPending(null); setPinName(""); setPinNotes("");
+    if (!pendingPin || !pinName.trim()) return;
+    const pin = {
+      id: Date.now(),
+      name: pinName.trim(),
+      type: pinType,
+      lat: pendingPin.lat,
+      lng: pendingPin.lng,
+      notes: pinNotes
+    };
+    const p2 = {
+      ...(data.pins || {})
+    };
+    p2[selDest] = [...(p2[selDest] || []), pin];
+    upd({
+      ...data,
+      pins: p2
+    });
+    if (pendingMarkerRef.current) {
+      pendingMarkerRef.current.remove();
+      pendingMarkerRef.current = null;
+    }
+    setPending(null);
+    setPinName("");
+    setPinNotes("");
   };
-
-  const deletePin = (pinId) => {
-    const p2={...(data.pins||{})}; p2[selDest]=(p2[selDest]||[]).filter(p=>p.id!==pinId);
-    upd({...data,pins:p2}); if(selPin===pinId) setSelPin(null);
+  const deletePin = pinId => {
+    const p2 = {
+      ...(data.pins || {})
+    };
+    p2[selDest] = (p2[selDest] || []).filter(p => p.id !== pinId);
+    upd({
+      ...data,
+      pins: p2
+    });
   };
-
-  const routePts = ["madrid","paris","brussels","berlin","rome","marrakech","madrid"]
-    .map(id=>{ const d=DEST.find(x=>x.id===id); return `${d.x},${d.y}`; }).join(" ");
-
-  const totalPins = Object.values(data.pins||{}).reduce((s,p)=>s+p.length,0);
-
-  return (
-    <div>
-      <div style={{ display:"flex", gap:8, marginBottom:14, alignItems:"center", flexWrap:"wrap" }}>
-        <div style={{ display:"flex", gap:4, background:C.surf, borderRadius:8, padding:4 }}>
-          {[{id:"select",label:"👆 Seleccionar"},{id:"pin",label:"📍 Agregar pin"}].map(m=>(
-            <button key={m.id} style={{...btn(mapMode===m.id?"primary":"secondary"),padding:"5px 12px",fontSize:12}}
-              onClick={()=>{setMapMode(m.id);setPending(null);}}>{m.label}</button>
-          ))}
-        </div>
-        {mapMode==="pin" && <select style={{...inp,width:"auto",padding:"5px 10px",fontSize:12}} value={pinType} onChange={e=>setPinType(e.target.value)}>
-          {PIN_TYPES.map(p=><option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}
-        </select>}
-        {mapMode==="pin"&&!selDest && <span style={{fontSize:12,color:"#f59e0b"}}>⚠️ Selecciona una ciudad primero</span>}
-        {mapMode==="pin"&&selDest&&!pendingPin && <span style={{fontSize:12,color:C.accent}}>Clic en el mapa para poner pin en {dest?.name}</span>}
-        {dest && <button style={{...btn("secondary"),marginLeft:"auto",padding:"5px 11px",fontSize:12}} onClick={()=>setZoomed(!zoomed)}>
-          {zoomed?"🌍 Ver todo":"🔍 Zoom ciudad"}</button>}
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 275px", gap:16 }}>
-        <div style={{...card,padding:0,overflow:"hidden"}}>
-          <svg ref={svgRef} viewBox={getViewBox()}
-            style={{width:"100%",display:"block",cursor:mapMode==="pin"&&selDest?"crosshair":"default"}}
-            onClick={handleSvgClick}>
-            <rect width="500" height="310" fill="#1a3a5c"/>
-            <polygon points="0,246 500,246 500,310 0,310" fill="#6b5a3a" opacity="0.75"/>
-            <polygon points="88,145 205,140 212,168 205,218 165,230 115,218 86,192" fill="#2d6a4a" opacity="0.8"/>
-            <polygon points="202,88 296,82 300,168 258,175 205,170 200,128" fill="#2d6a4a" opacity="0.8"/>
-            <polygon points="192,38 252,32 258,74 218,78" fill="#235438" opacity="0.5"/>
-            <polygon points="262,60 322,54 326,90 262,96" fill="#2d6a4a" opacity="0.8"/>
-            <polygon points="292,48 432,42 438,150 292,154 286,90" fill="#2d6a4a" opacity="0.8"/>
-            <polygon points="290,152 372,148 376,182 290,178" fill="#235438" opacity="0.65"/>
-            <polygon points="288,158 376,148 384,202 365,248 342,253 312,238 288,206" fill="#2d6a4a" opacity="0.8"/>
-            <polyline points={routePts} fill="none" stroke={C.accent} strokeWidth="1.5" strokeDasharray="5,3" opacity="0.85"/>
-            {allPins.map(pin=>{
-              const pt=PIN_TYPES.find(p=>p.id===pin.type)||PIN_TYPES[9];
-              const show=!zoomed||(selDest&&pin.destId===selDest);
-              if(!show) return null;
-              const isSel=selPin===pin.id;
-              return (
-                <g key={pin.id} style={{cursor:"pointer"}} onClick={e=>{e.stopPropagation();setSelPin(isSel?null:pin.id);setMapMode("select");if(selDest!==pin.destId)setSelDest(pin.destId);}}>
-                  <circle cx={pin.x} cy={pin.y} r={isSel?13:9} fill={pin.destColor} opacity={isSel?0.95:0.6}/>
-                  {isSel&&<circle cx={pin.x} cy={pin.y} r="16" fill="none" stroke={pin.destColor} strokeWidth="2" opacity="0.5"/>}
-                  <text x={pin.x} y={pin.y+3} textAnchor="middle" dominantBaseline="middle" fontSize={isSel?10:8} style={{userSelect:"none"}}>{pt.emoji}</text>
-                  {(selDest===pin.destId||isSel)&&<text x={pin.x} y={pin.y+19} textAnchor="middle" fontSize="7" fill="white" style={{paintOrder:"stroke",stroke:"#0f172a",strokeWidth:2.5,userSelect:"none"}}>{pin.name.length>12?pin.name.slice(0,11)+"…":pin.name}</text>}
-                </g>
-              );
-            })}
-            {pendingPin&&<g><circle cx={pendingPin.x} cy={pendingPin.y} r="14" fill={C.accent} opacity="0.25"/><circle cx={pendingPin.x} cy={pendingPin.y} r="6" fill={C.accent} stroke="white" strokeWidth="1.5"/></g>}
-            {DEST.map(d=>{
-              const isSel=selDest===d.id;
-              const show=!zoomed||selDest===d.id;
-              if(!show) return null;
-              return (
-                <g key={d.id} style={{cursor:"pointer"}} onClick={e=>{e.stopPropagation();if(mapMode==="pin"){setSelDest(d.id);return;}setSelDest(isSel?null:d.id);setPending(null);setSelPin(null);}}>
-                  {isSel&&<circle cx={d.x} cy={d.y} r="18" fill={d.color} opacity="0.18"/>}
-                  <circle cx={d.x} cy={d.y} r={isSel?10:6} fill={d.color} stroke="#0f172a" strokeWidth="1.5"/>
-                  {isSel&&<circle cx={d.x} cy={d.y} r="14" fill="none" stroke={d.color} strokeWidth="2" opacity="0.6"/>}
-                  <text x={d.x} y={d.y-16} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="white" style={{paintOrder:"stroke",stroke:"#0f172a",strokeWidth:3,strokeLinejoin:"round",userSelect:"none"}}>{d.flag} {d.name}</text>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {mapMode==="pin"&&pendingPin&&(
-            <div style={{...card,borderLeft:`3px solid ${C.accent}`,borderRadius:"0 10px 10px 0"}}>
-              <div style={{fontSize:13,fontWeight:700,color:C.accent,marginBottom:12}}>📍 Nuevo pin · {dest?.flag} {dest?.name}</div>
-              <div style={{marginBottom:9}}><label style={lbl}>Nombre *</label><input style={inp} placeholder="Bar El Tigre, Calle Gran Vía…" value={pinName} onChange={e=>setPinName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&confirmPin()} autoFocus/></div>
-              <div style={{marginBottom:9}}><label style={lbl}>Tipo</label><select style={inp} value={pinType} onChange={e=>setPinType(e.target.value)}>{PIN_TYPES.map(p=><option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}</select></div>
-              <div style={{marginBottom:12}}><label style={lbl}>Dirección / notas</label><input style={inp} placeholder="Calle, horario, precio…" value={pinNotes} onChange={e=>setPinNotes(e.target.value)}/></div>
-              <div style={{display:"flex",gap:8}}><button style={{...btn("primary"),flex:1}} onClick={confirmPin}>✓ Guardar</button><button style={btn("secondary")} onClick={()=>{setPending(null);setPinName("");setPinNotes("");}}>✕</button></div>
-            </div>
-          )}
-          {selPin&&(()=>{
-            const pin=allPins.find(p=>p.id===selPin); if(!pin) return null;
-            const pt=PIN_TYPES.find(p=>p.id===pin.type)||PIN_TYPES[9];
-            return (<div style={{...card,borderLeft:`3px solid ${pin.destColor}`,borderRadius:"0 10px 10px 0"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                <div><div style={{fontSize:15,fontWeight:700}}>{pt.emoji} {pin.name}</div><div style={{fontSize:12,color:C.muted,marginTop:2}}>{pt.label} · {DEST.find(d=>d.id===pin.destId)?.name}</div>{pin.notes&&<div style={{fontSize:12,marginTop:6}}>📌 {pin.notes}</div>}</div>
-                <button style={{...btn("danger"),padding:"3px 9px",fontSize:11}} onClick={()=>{deletePin(pin.id);setSelPin(null);}}>✕</button>
-              </div>
-            </div>);
-          })()}
-          {dest&&!pendingPin&&!selPin?(
-            <div style={{...card,borderLeft:`3px solid ${dest.color}`,borderRadius:"0 10px 10px 0"}}>
-              <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>{dest.flag} {dest.name}</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Días {dest.days[0]}–{dest.days[dest.days.length-1]} · {dest.days.length} noches</div>
-              {data.stays[dest.id]?.name&&<div style={{fontSize:12,marginBottom:10}}>🏨 {data.stays[dest.id].name}</div>}
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Ir al día:</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                  {dest.days.map(day=><button key={day} style={{...btn("secondary"),padding:"4px 10px",fontSize:12}} onClick={()=>{setSelDay(day);setTab("itinerario");}}>Día {day}</button>)}
-                </div>
-              </div>
-              <button style={{...btn("secondary"),fontSize:12,width:"100%"}} onClick={()=>{setSelDest(null);setPending(null);setZoomed(false);}}>Cerrar</button>
-            </div>
-          ):!dest&&!pendingPin?(
-            <div style={{...card,textAlign:"center",color:"#475569",paddingTop:24}}>
-              <div style={{fontSize:28,marginBottom:8}}>{mapMode==="pin"?"📍":"👆"}</div>
-              <div style={{fontSize:13,lineHeight:1.6}}>{mapMode==="pin"?"Selecciona una ciudad, luego haz clic en el mapa":"Haz clic en una ciudad para ver detalles"}</div>
-            </div>
-          ):null}
-          {dest&&<div style={{...card,flex:1}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:13,fontWeight:700}}>Puntos de interés <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({destPins.length})</span></div>
-              {mapMode!=="pin"&&<button style={{...btn("primary"),padding:"4px 10px",fontSize:11}} onClick={()=>setMapMode("pin")}>+ Pin</button>}
-            </div>
-            {destPins.length===0?<div style={{color:"#475569",fontSize:12,textAlign:"center",padding:"16px 0"}}>Sin pins aún</div>:
-              destPins.map(pin=>{
-                const pt=PIN_TYPES.find(p=>p.id===pin.type)||PIN_TYPES[9];
-                const isSel=selPin===pin.id;
-                return (<div key={pin.id} style={{display:"flex",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`,alignItems:"flex-start",cursor:"pointer",background:isSel?C.accent+"10":"transparent",borderRadius:isSel?6:0,paddingLeft:isSel?8:0}} onClick={()=>setSelPin(isSel?null:pin.id)}>
-                  <div style={{fontSize:16,flexShrink:0,width:22,textAlign:"center"}}>{pt.emoji}</div>
-                  <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:600}}>{pin.name}</div><div style={{fontSize:11,color:C.muted}}>{pt.label}{pin.notes?` · ${pin.notes}`:""}</div></div>
-                  <button style={{...btn("danger"),padding:"2px 7px",fontSize:11,flexShrink:0}} onClick={e=>{e.stopPropagation();deletePin(pin.id);}}>✕</button>
-                </div>);
-              })
-            }
-          </div>}
-          {!selDest&&<>
-            <div style={card}>
-              <div style={{fontSize:13,fontWeight:700,color:C.accent,marginBottom:10}}>🗺️ Ruta</div>
-              {DEST.map(d=><div key={d.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:d.color,flexShrink:0}}/>
-                <div style={{fontSize:12,flex:1}}>{d.flag} <strong>{d.name}</strong> <span style={{color:"#64748b"}}>Días {d.days[0]}–{d.days[d.days.length-1]}</span></div>
-                {(data.pins?.[d.id]?.length||0)>0&&<span style={{fontSize:11,color:C.muted}}>📍{data.pins[d.id].length}</span>}
-              </div>)}
-            </div>
-            <div style={{...card,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {[["🗓️","20 días"],["👥","4 personas"],["🏙️","6 ciudades"],["📍",`${totalPins} pins`]].map(([ic,v])=>(
-                <div key={v} style={{background:C.surf2,borderRadius:8,padding:"10px 12px",textAlign:"center"}}><div style={{fontSize:16}}>{ic}</div><div style={{fontSize:12,fontWeight:700,marginTop:3}}>{v}</div></div>
-              ))}
-            </div>
-          </>}
-        </div>
-      </div>
-    </div>
-  );
+  const updateDest = (id, field, val) => upd({
+    ...data,
+    destConfig: dests.map(d => d.id === id ? {
+      ...d,
+      [field]: val
+    } : d)
+  });
+  const removeDest = id => {
+    if (dests.length <= 1) return;
+    upd({
+      ...data,
+      destConfig: dests.filter(d => d.id !== id)
+    });
+    if (selDest === id) setSelDest(null);
+  };
+  const moveDest = (id, dir) => {
+    const idx = dests.findIndex(d => d.id === id);
+    if (dir === -1 && idx === 0 || dir === 1 && idx === dests.length - 1) return;
+    const nd = [...dests];
+    const tmp = nd[idx];
+    nd[idx] = nd[idx + dir];
+    nd[idx + dir] = tmp;
+    upd({
+      ...data,
+      destConfig: nd
+    });
+  };
+  const addCity = async () => {
+    if (!citySearch.trim()) return;
+    setSearching(true);
+    setSearchErr("");
+    try {
+      const geo = await geocodeCity(citySearch);
+      if (!geo) {
+        setSearchErr("No encontrado. Intenta con otro nombre.");
+        setSearching(false);
+        return;
+      }
+      const id = `city_${Date.now()}`;
+      const color = PALETTE[dests.length % PALETTE.length];
+      const newDest = {
+        id,
+        name: geo.name,
+        flag: geo.flag,
+        color,
+        latlng: geo.latlng,
+        nights: 2,
+        startDate: ""
+      };
+      const newI = {
+        ...data.itinerary,
+        [id]: {}
+      };
+      for (let i = 1; i <= 15; i++) newI[id][`day${i}`] = {
+        title: "",
+        activities: "",
+        meals: "",
+        notes: ""
+      };
+      const newS = {
+        ...data.stays,
+        [id]: {
+          name: "",
+          type: "",
+          checkIn: "",
+          checkOut: "",
+          pricePerNight: "",
+          link: "",
+          notes: ""
+        }
+      };
+      const newP = {
+        ...data.pins,
+        [id]: []
+      };
+      upd({
+        ...data,
+        destConfig: [...dests, newDest],
+        itinerary: newI,
+        stays: newS,
+        pins: newP
+      });
+      setCitySearch("");
+      setShowAddCity(false);
+      if (mapRef.current) mapRef.current.flyTo(geo.latlng, 11, {
+        duration: 1.5
+      });
+    } catch {
+      setSearchErr("Error al buscar.");
+    }
+    setSearching(false);
+  };
+  const totalPins = Object.values(data.pins || {}).reduce((s, p) => s + p.length, 0);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 16,
+      alignItems: "center",
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 0,
+      border: `1.5px solid ${C.border}`,
+      borderRadius: 10,
+      overflow: "hidden",
+      background: C.surf
+    }
+  }, [{
+    id: "select",
+    label: "👆 Explorar ciudades"
+  }, {
+    id: "pin",
+    label: "📍 Marcar lugar"
+  }].map(m => /*#__PURE__*/React.createElement("button", {
+    key: m.id,
+    style: {
+      padding: "8px 18px",
+      border: "none",
+      cursor: "pointer",
+      fontSize: 13,
+      fontFamily: "'EB Garamond',serif",
+      fontWeight: 600,
+      background: mapMode === m.id ? C.burg : C.surf,
+      color: mapMode === m.id ? "#FFF" : C.textSec,
+      transition: "all 0.2s"
+    },
+    onClick: () => {
+      setMapMode(m.id);
+      setPending(null);
+      if (pendingMarkerRef.current) {
+        pendingMarkerRef.current.remove();
+        pendingMarkerRef.current = null;
+      }
+    }
+  }, m.label))), mapMode === "pin" && /*#__PURE__*/React.createElement("select", {
+    style: {
+      ...baseinp,
+      width: "auto",
+      padding: "7px 12px",
+      fontSize: 13
+    },
+    value: pinType,
+    onChange: e => setPinType(e.target.value)
+  }, PIN_TYPES.map(p => /*#__PURE__*/React.createElement("option", {
+    key: p.id,
+    value: p.id
+  }, p.emoji, " ", p.label))), mapMode === "pin" && !selDest && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: C.burg,
+      background: C.burgLight,
+      padding: "6px 12px",
+      borderRadius: 8,
+      border: `1px solid ${C.burg}30`
+    }
+  }, "⚠ Primero haz clic en una ciudad del mapa"), mapMode === "pin" && selDest && !pendingPin && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: C.blue,
+      background: C.blueLight,
+      padding: "6px 12px",
+      borderRadius: 8
+    }
+  }, "📍 Haz clic en cualquier punto del mapa para marcar ", dest?.name), selDest && /*#__PURE__*/React.createElement(Btn, {
+    v: "secondary",
+    small: true,
+    style: {
+      marginLeft: "auto"
+    },
+    onClick: () => {
+      setSelDest(null);
+      if (mapRef.current) mapRef.current.flyTo([47, 8], 4, {
+        duration: 1
+      });
+    }
+  }, "🌍 Ver ruta completa")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 320px",
+      gap: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderRadius: 16,
+      overflow: "hidden",
+      border: `1px solid ${C.border}`,
+      boxShadow: C.shadowMd,
+      cursor: mapMode === "pin" && selDest ? "crosshair" : "grab"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: mapDivRef,
+    style: {
+      height: 580
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 14,
+      overflowY: "auto",
+      maxHeight: 580
+    }
+  }, mapMode === "pin" && pendingPin && /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      borderLeft: `4px solid ${C.gold}`,
+      borderRadius: "0 14px 14px 0"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 16,
+      color: C.burg,
+      marginBottom: 14
+    }
+  }, "Nuevo pin · ", dest?.flag, " ", dest?.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Nombre del lugar *"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    placeholder: "Café de Flore, Rue Cler…",
+    value: pinName,
+    onChange: e => setPinName(e.target.value),
+    onKeyDown: e => e.key === "Enter" && confirmPin(),
+    autoFocus: true
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Categoría"), /*#__PURE__*/React.createElement("select", {
+    style: baseinp,
+    value: pinType,
+    onChange: e => setPinType(e.target.value)
+  }, PIN_TYPES.map(p => /*#__PURE__*/React.createElement("option", {
+    key: p.id,
+    value: p.id
+  }, p.emoji, " ", p.label)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Notas"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    placeholder: "Dirección, horario, precio…",
+    value: pinNotes,
+    onChange: e => setPinNotes(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    v: "primary",
+    style: {
+      flex: 1
+    },
+    onClick: confirmPin
+  }, "✓ Guardar pin"), /*#__PURE__*/React.createElement(Btn, {
+    v: "secondary",
+    onClick: () => {
+      setPending(null);
+      if (pendingMarkerRef.current) {
+        pendingMarkerRef.current.remove();
+        pendingMarkerRef.current = null;
+      }
+    }
+  }, "Cancelar"))), selDest && !pendingPin && /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      borderTop: `3px solid ${dest?.color}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 16,
+      marginBottom: 10
+    }
+  }, dest?.flag, " ", dest?.name, " — Lugares marcados"), destPins.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: "📍",
+    title: "Sin lugares marcados",
+    desc: "Cambia a 'Marcar lugar' y haz clic en el mapa para agregar hoteles, restaurantes o atracciones."
+  }) : destPins.map(pin => {
+    const pt = PIN_TYPES.find(p => p.id === pin.type) || PIN_TYPES[9];
+    return /*#__PURE__*/React.createElement("div", {
+      key: pin.id,
+      style: {
+        display: "flex",
+        gap: 10,
+        padding: "9px 0",
+        borderBottom: `1px solid ${C.border}`,
+        alignItems: "flex-start"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 20,
+        lineHeight: 1
+      }
+    }, pt.emoji), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 14,
+        fontWeight: 600,
+        color: C.text
+      }
+    }, pin.name), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: C.textMut
+      }
+    }, pt.label, pin.notes ? ` · ${pin.notes}` : "")), /*#__PURE__*/React.createElement(Btn, {
+      v: "ghost",
+      small: true,
+      onClick: () => deletePin(pin.id),
+      style: {
+        color: C.red,
+        padding: "2px 6px",
+        fontSize: 16
+      }
+    }, "×"));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 17,
+      color: C.text
+    }
+  }, "Ruta del viaje"), /*#__PURE__*/React.createElement(Badge, {
+    color: C.gold
+  }, dests.reduce((s, d) => s + parseInt(d.nights || 0), 0), " noches")), dests.map((d, i) => /*#__PURE__*/React.createElement("div", {
+    key: d.id,
+    style: {
+      border: `1.5px solid ${selDest === d.id ? d.color : C.border}`,
+      borderRadius: 10,
+      padding: "10px 12px",
+      marginBottom: 8,
+      background: selDest === d.id ? d.color + "08" : C.surf2,
+      transition: "all 0.2s"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 10,
+      height: 10,
+      borderRadius: "50%",
+      background: d.color,
+      flexShrink: 0,
+      boxShadow: `0 0 0 2px ${d.color}30`
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: 15,
+      flex: 1,
+      cursor: "pointer",
+      color: C.text
+    },
+    onClick: () => {
+      setSelDest(p => p === d.id ? null : d.id);
+      if (mapRef.current) mapRef.current.flyTo(d.latlng, 12, {
+        duration: 1.2
+      });
+    }
+  }, d.flag, " ", d.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 3
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    v: "ghost",
+    small: true,
+    disabled: i === 0,
+    onClick: () => moveDest(d.id, -1),
+    style: {
+      padding: "2px 7px",
+      fontSize: 13,
+      color: C.textMut
+    }
+  }, "↑"), /*#__PURE__*/React.createElement(Btn, {
+    v: "ghost",
+    small: true,
+    disabled: i === dests.length - 1,
+    onClick: () => moveDest(d.id, 1),
+    style: {
+      padding: "2px 7px",
+      fontSize: 13,
+      color: C.textMut
+    }
+  }, "↓"), dests.length > 1 && /*#__PURE__*/React.createElement(Btn, {
+    v: "ghost",
+    small: true,
+    onClick: () => removeDest(d.id),
+    style: {
+      padding: "2px 7px",
+      fontSize: 14,
+      color: C.red
+    }
+  }, "×"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      background: C.surf,
+      border: `1px solid ${C.border}`,
+      borderRadius: 7,
+      padding: "4px 8px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: C.textMut
+    }
+  }, "🌙"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "60",
+    style: {
+      width: 44,
+      border: "none",
+      background: "transparent",
+      fontSize: 14,
+      fontWeight: 600,
+      color: C.text,
+      fontFamily: "'EB Garamond',serif",
+      outline: "none",
+      textAlign: "center"
+    },
+    value: d.nights,
+    onChange: e => updateDest(d.id, "nights", Math.max(1, parseInt(e.target.value) || 1))
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: C.textMut
+    }
+  }, "noches")), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    title: "Fecha de llegada",
+    style: {
+      ...baseinp,
+      flex: 1,
+      padding: "5px 8px",
+      fontSize: 12
+    },
+    value: d.startDate || "",
+    onChange: e => updateDest(d.id, "startDate", e.target.value)
+  })))), showAddCity ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.goldLight,
+      border: `1.5px solid ${C.gold}`,
+      borderRadius: 10,
+      padding: 14,
+      marginTop: 4
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 600,
+      marginBottom: 10,
+      color: C.text
+    }
+  }, "🔍 Buscar ciudad"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...baseinp,
+      flex: 1
+    },
+    placeholder: "Ej: Lisboa, Praga, Ámsterdam…",
+    value: citySearch,
+    onChange: e => setCitySearch(e.target.value),
+    onKeyDown: e => e.key === "Enter" && addCity(),
+    autoFocus: true
+  }), /*#__PURE__*/React.createElement(Btn, {
+    v: "primary",
+    onClick: addCity,
+    disabled: searching
+  }, searching ? "…" : "Agregar")), searchErr && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: C.red,
+      marginBottom: 6
+    }
+  }, searchErr), /*#__PURE__*/React.createElement(Btn, {
+    v: "ghost",
+    small: true,
+    onClick: () => {
+      setShowAddCity(false);
+      setCitySearch("");
+      setSearchErr("");
+    }
+  }, "Cancelar")) : /*#__PURE__*/React.createElement("button", {
+    style: {
+      width: "100%",
+      padding: "10px",
+      border: `1.5px dashed ${C.borderStrong}`,
+      borderRadius: 10,
+      background: "transparent",
+      cursor: "pointer",
+      fontSize: 14,
+      color: C.textSec,
+      fontFamily: "'EB Garamond',serif",
+      marginTop: 4,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6
+    },
+    onClick: () => setShowAddCity(true)
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 18
+    }
+  }, "+"), " Agregar ciudad a la ruta"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 8,
+      marginTop: 14,
+      paddingTop: 14,
+      borderTop: `1px solid ${C.border}`
+    }
+  }, [["🏙️", `${dests.length} ciudades`], ["📍", `${totalPins} lugares`]].map(([ic, v]) => /*#__PURE__*/React.createElement("div", {
+    key: v,
+    style: {
+      background: C.surf2,
+      borderRadius: 8,
+      padding: "8px 10px",
+      textAlign: "center",
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", null, ic, " ", /*#__PURE__*/React.createElement("strong", {
+    style: {
+      fontSize: 14
+    }
+  }, v)))))))));
 }
 
-// ─── ITINERARY TAB ────────────────────────────────────────────────
-function ItinTab({ data, upd, selDay, setSelDay }) {
-  const dayData  = data.itinerary[`day${selDay}`]||{};
-  const curDest  = DEST.find(d=>d.days.includes(selDay));
-  const defTitle = curDest?`${curDest.name} — Día ${selDay}`:`Día ${selDay}`;
-  const setDay   = (f,v) => upd({...data,itinerary:{...data.itinerary,[`day${selDay}`]:{...dayData,[f]:v}}});
-  return (
-    <div style={{display:"grid",gridTemplateColumns:"190px 1fr",gap:16}}>
-      <div style={{...card,padding:8}}>
-        <div style={{fontSize:11,color:C.muted,padding:"4px 8px 8px",textTransform:"uppercase",letterSpacing:1}}>Días del viaje</div>
-        {DEST.map(d=>(
-          <div key={d.id}>
-            <div style={{fontSize:11,fontWeight:700,padding:"5px 8px 2px",color:d.color}}>{d.flag} {d.name}</div>
-            {d.days.map(day=>{
-              const dd=data.itinerary[`day${day}`];
-              const filled=dd?.activities||dd?.meals||dd?.notes||dd?.title;
-              const active=selDay===day;
-              const display=dd?.title||`Día ${day}`;
-              return (<button key={day} style={{display:"block",width:"100%",textAlign:"left",border:"none",cursor:"pointer",padding:"5px 8px 5px 16px",borderRadius:5,fontSize:12,borderLeft:active?`2px solid ${d.color}`:"2px solid transparent",background:active?d.color+"20":"transparent",color:active?d.color:C.muted,fontWeight:active?700:400}} onClick={()=>setSelDay(day)}>{display} {filled?<span style={{opacity:0.55}}>●</span>:""}</button>);
-            })}
-          </div>
-        ))}
-      </div>
-      {curDest&&<div style={{...card,borderTop:`3px solid ${curDest.color}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
-          <div style={{background:curDest.color,color:"#0f172a",borderRadius:8,padding:"4px 14px",fontSize:14,fontWeight:800,flexShrink:0}}>Día {selDay}</div>
-          <input style={{...inp,flex:1,fontSize:14,fontWeight:600,background:"transparent",border:"none",borderBottom:`1px solid ${C.border}`,borderRadius:0,padding:"4px 0"}} value={dayData.title||""} placeholder={defTitle} onChange={e=>setDay("title",e.target.value)}/>
-          <div style={{display:"flex",gap:6,flexShrink:0}}>
-            <button style={{...btn("secondary"),padding:"5px 12px",fontSize:12}} disabled={selDay===1} onClick={()=>setSelDay(Math.max(1,selDay-1))}>← Ant.</button>
-            <button style={{...btn("secondary"),padding:"5px 12px",fontSize:12}} disabled={selDay===20} onClick={()=>setSelDay(Math.min(20,selDay+1))}>Sig. →</button>
-          </div>
-        </div>
-        <div><label style={lbl}>🎯 Actividades</label><textarea style={{...ta,minHeight:100}} placeholder="¿Qué harán hoy?" value={dayData.activities||""} onChange={e=>setDay("activities",e.target.value)}/></div>
-        <div style={{marginTop:12}}><label style={lbl}>🍽️ Comidas y restaurantes</label><textarea style={{...ta,minHeight:80}} placeholder="Desayuno, almuerzo, cena…" value={dayData.meals||""} onChange={e=>setDay("meals",e.target.value)}/></div>
-        <div style={{marginTop:12}}><label style={lbl}>📝 Notas del día</label><textarea style={ta} placeholder="Tips, reservas, cosas a recordar…" value={dayData.notes||""} onChange={e=>setDay("notes",e.target.value)}/></div>
-        {(()=>{const pins=data.pins?.[curDest.id]||[];if(pins.length===0)return null;return(<div style={{marginTop:14,background:C.surf2,borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:C.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>📍 Pins en {curDest.name}</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{pins.map(pin=>{const pt=PIN_TYPES.find(p=>p.id===pin.type)||PIN_TYPES[9];return(<div key={pin.id} style={{background:curDest.color+"25",color:curDest.color,borderRadius:5,padding:"3px 9px",fontSize:11,fontWeight:500}}>{pt.emoji} {pin.name}</div>);})}</div></div>);})()}
-      </div>}
-    </div>
-  );
+/* ── ITINERARY TAB ───────────────────────────────────────────── */
+function ItinTab({
+  data,
+  upd,
+  selDay,
+  setSelDay
+}) {
+  const dests = data.destConfig || DEFAULT_DESTS;
+  const {
+    dest: selDestId,
+    idx: selIdx
+  } = selDay;
+  const curDest = dests.find(d => d.id === selDestId) || dests[0];
+  const nights = parseInt(curDest?.nights || 3);
+  const dayData = data.itinerary?.[curDest?.id]?.[`day${selIdx}`] || {};
+  const destPins = data.pins?.[curDest?.id] || [];
+  const getDate = () => {
+    if (!curDest?.startDate) return null;
+    const d = new Date(curDest.startDate);
+    d.setDate(d.getDate() + selIdx - 1);
+    return d.toLocaleDateString("es", {
+      weekday: "long",
+      day: "numeric",
+      month: "long"
+    });
+  };
+  const setDay = (f, v) => upd({
+    ...data,
+    itinerary: {
+      ...data.itinerary,
+      [curDest.id]: {
+        ...data.itinerary[curDest.id],
+        [`day${selIdx}`]: {
+          ...dayData,
+          [f]: v
+        }
+      }
+    }
+  });
+  const goNext = () => {
+    if (selIdx < nights) setSelDay({
+      dest: selDestId,
+      idx: selIdx + 1
+    });else {
+      const i = dests.findIndex(d => d.id === selDestId);
+      if (i < dests.length - 1) setSelDay({
+        dest: dests[i + 1].id,
+        idx: 1
+      });
+    }
+  };
+  const goPrev = () => {
+    if (selIdx > 1) setSelDay({
+      dest: selDestId,
+      idx: selIdx - 1
+    });else {
+      const i = dests.findIndex(d => d.id === selDestId);
+      if (i > 0) {
+        const p = dests[i - 1];
+        setSelDay({
+          dest: p.id,
+          idx: parseInt(p.nights || 3)
+        });
+      }
+    }
+  };
+  const isFirst = selIdx === 1 && selDestId === dests[0]?.id;
+  const isLast = selIdx === nights && selDestId === dests[dests.length - 1]?.id;
+  const totalFilled = dests.reduce((s, d) => {
+    let c = 0;
+    const n = parseInt(d.nights || 3);
+    for (let i = 1; i <= n; i++) {
+      const dd = data.itinerary?.[d.id]?.[`day${i}`];
+      if (dd?.activities || dd?.meals || dd?.notes || dd?.title) c++;
+    }
+    return s + c;
+  }, 0);
+  const totalDays = dests.reduce((s, d) => s + parseInt(d.nights || 3), 0);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "220px 1fr",
+      gap: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      padding: 12,
+      overflowY: "auto",
+      maxHeight: "78vh"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 14,
+      padding: "10px 12px",
+      background: C.surf2,
+      borderRadius: 10,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      fontSize: 12,
+      color: C.textMut,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Días planificados"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 600,
+      color: C.burg
+    }
+  }, totalFilled, "/", totalDays)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 6,
+      background: C.border,
+      borderRadius: 3,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: "100%",
+      width: `${totalDays > 0 ? totalFilled / totalDays * 100 : 0}%`,
+      background: C.burg,
+      borderRadius: 3,
+      transition: "width 0.5s"
+    }
+  }))), dests.map(d => {
+    const dn = parseInt(d.nights || 3);
+    const isActive = selDestId === d.id;
+    return /*#__PURE__*/React.createElement("div", {
+      key: d.id,
+      style: {
+        marginBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      onClick: () => setSelDay({
+        dest: d.id,
+        idx: 1
+      }),
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 10px",
+        borderRadius: 8,
+        cursor: "pointer",
+        background: isActive ? d.color + "12" : "transparent",
+        border: isActive ? `1px solid ${d.color}30` : "1px solid transparent",
+        marginBottom: 2
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: d.color,
+        flexShrink: 0
+      }
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: 700,
+        color: isActive ? d.color : C.text
+      }
+    }, d.flag, " ", d.name), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: C.textMut
+      }
+    }, dn, "n")), Array.from({
+      length: dn
+    }, (_, i) => {
+      const dd = data.itinerary?.[d.id]?.[`day${i + 1}`];
+      const filled = dd?.activities || dd?.meals || dd?.notes || dd?.title;
+      const active = selDestId === d.id && selIdx === i + 1;
+      const date = d.startDate ? new Date(new Date(d.startDate).getTime() + i * 86400000).toLocaleDateString("es", {
+        day: "numeric",
+        month: "short"
+      }) : null;
+      return /*#__PURE__*/React.createElement("button", {
+        key: i,
+        onClick: () => setSelDay({
+          dest: d.id,
+          idx: i + 1
+        }),
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          textAlign: "left",
+          border: "none",
+          cursor: "pointer",
+          padding: "6px 10px 6px 26px",
+          borderRadius: 7,
+          fontSize: 13,
+          background: active ? d.color + "20" : "transparent",
+          color: active ? d.color : C.textSec,
+          fontFamily: "'EB Garamond',serif",
+          transition: "all 0.15s"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          flex: 1
+        }
+      }, "Día ", i + 1, date ? ` · ${date}` : ""), filled && /*#__PURE__*/React.createElement("span", {
+        style: {
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: d.color,
+          flexShrink: 0,
+          display: "block"
+        }
+      }));
+    }));
+  })), curDest ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      borderTop: `4px solid ${curDest.color}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 16,
+      marginBottom: 20,
+      paddingBottom: 16,
+      borderBottom: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: curDest.color,
+      color: "#fff",
+      borderRadius: 12,
+      padding: "8px 18px",
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 16,
+      fontWeight: 700,
+      flexShrink: 0,
+      boxShadow: `0 4px 12px ${curDest.color}40`
+    }
+  }, curDest.flag, " Día ", selIdx, /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 400,
+      opacity: 0.85
+    }
+  }, curDest.name)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, getDate() && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: C.textMut,
+      marginBottom: 6,
+      fontStyle: "italic"
+    }
+  }, getDate()), /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...baseinp,
+      fontSize: 16,
+      fontFamily: "'Playfair Display',serif",
+      fontWeight: 600,
+      border: `1.5px solid ${C.border}`
+    },
+    value: dayData.title || "",
+    placeholder: `Título del día en ${curDest.name}…`,
+    onChange: e => setDay("title", e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    v: "secondary",
+    small: true,
+    disabled: isFirst,
+    onClick: goPrev
+  }, "← Anterior"), /*#__PURE__*/React.createElement(Btn, {
+    v: "secondary",
+    small: true,
+    disabled: isLast,
+    onClick: goNext
+  }, "Siguiente →"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gap: 16
+    }
+  }, [{
+    f: "activities",
+    icon: "🎯",
+    label: "Actividades del día",
+    ph: "Qué harán hoy, a qué hora, cómo llegar…",
+    h: 110
+  }, {
+    f: "meals",
+    icon: "🍽️",
+    label: "Comidas y restaurantes",
+    ph: "Desayuno, almuerzo, cena — lugares recomendados o reservas…",
+    h: 90
+  }, {
+    f: "notes",
+    icon: "📝",
+    label: "Notas importantes",
+    ph: "Reservas, tips locales, cosas a recordar, números útiles…",
+    h: 80
+  }].map(({
+    f,
+    icon,
+    label,
+    ph,
+    h
+  }) => /*#__PURE__*/React.createElement("div", {
+    key: f
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      ...lbl,
+      display: "flex",
+      alignItems: "center",
+      gap: 5
+    }
+  }, /*#__PURE__*/React.createElement("span", null, icon), label), /*#__PURE__*/React.createElement("textarea", {
+    style: {
+      ...baseta,
+      minHeight: h
+    },
+    placeholder: ph,
+    value: dayData[f] || "",
+    onChange: e => setDay(f, e.target.value)
+  })))), destPins.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 16,
+      background: C.surf2,
+      borderRadius: 10,
+      padding: "12px 14px",
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      marginBottom: 8
+    }
+  }, "📍 Lugares marcados en ", curDest.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 6
+    }
+  }, destPins.map(pin => {
+    const pt = PIN_TYPES.find(p => p.id === pin.type) || PIN_TYPES[9];
+    return /*#__PURE__*/React.createElement(Badge, {
+      key: pin.id,
+      color: curDest.color
+    }, pt.emoji, " ", pin.name);
+  })))) : /*#__PURE__*/React.createElement(EmptyState, {
+    icon: "📅",
+    title: "Selecciona un día",
+    desc: "Elige un destino y día del panel izquierdo para empezar a planificar."
+  }));
 }
 
-// ─── BUDGET TAB ───────────────────────────────────────────────────
-function BudgetTab({ data, upd, budgetCat, setBudgetCat }) {
-  const [desc,setDesc]=useState(""); const [amt,setAmt]=useState(""); const [payer,setPayer]=useState("");
-  const cat=data.budget[budgetCat]||{limit:"",expenses:[]};
-  const spent=cat.expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
-  const totalBudg=Object.values(data.budget).reduce((s,c)=>s+parseFloat(c.limit||0),0);
-  const totalSpent=Object.values(data.budget).reduce((s,c)=>s+c.expenses.reduce((ss,e)=>ss+parseFloat(e.amount||0),0),0);
-  const pct=parseFloat(cat.limit)>0?Math.min(100,(spent/parseFloat(cat.limit))*100):0;
-  const addExp=()=>{if(!desc||!amt)return;const e={id:Date.now(),desc,amount:parseFloat(amt),payer:payer||data.travelers[0],date:new Date().toLocaleDateString("es")};upd({...data,budget:{...data.budget,[budgetCat]:{...cat,expenses:[...cat.expenses,e]}}});setDesc("");setAmt("");setPayer("");};
-  const delExp=(id)=>upd({...data,budget:{...data.budget,[budgetCat]:{...cat,expenses:cat.expenses.filter(e=>e.id!==id)}}});
-  const pctBar=(p,h=8)=>{const col=p>90?"#f87171":p>70?"#f59e0b":"#34d399";return <div style={{height:h,background:C.border,borderRadius:4,overflow:"hidden",marginTop:4}}><div style={{height:"100%",width:`${p}%`,background:col,borderRadius:4,transition:"width 0.3s"}}/></div>;};
-  return (
-    <div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
-        {[{l:"Presupuesto",v:`€${Math.round(totalBudg)}`,c:C.accent},{l:"Gastado",v:`€${Math.round(totalSpent)}`,c:"#f59e0b"},{l:"Disponible",v:`€${Math.round(totalBudg-totalSpent)}`,c:totalBudg-totalSpent>=0?"#34d399":"#f87171"},{l:"Por persona",v:`€${Math.round(totalSpent/4)}`,c:"#a78bfa"}].map(s=>(
-          <div key={s.l} style={{background:C.surf,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",textAlign:"center"}}><div style={{fontSize:11,color:C.muted,marginBottom:5}}>{s.l}</div><div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div></div>
-        ))}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"185px 1fr",gap:16}}>
-        <div style={{...card,padding:8}}>
-          {BUDGET_CATS.map(c=>{const cd=data.budget[c.id]||{limit:"",expenses:[]};const s=cd.expenses.reduce((sum,e)=>sum+parseFloat(e.amount||0),0);const p=parseFloat(cd.limit)>0?Math.min(100,(s/parseFloat(cd.limit))*100):0;const ac=budgetCat===c.id;return(<button key={c.id} style={{display:"block",width:"100%",textAlign:"left",border:"none",cursor:"pointer",padding:"8px 10px",borderRadius:7,fontSize:12,marginBottom:2,borderLeft:ac?`2px solid ${C.accent}`:"2px solid transparent",background:ac?C.accent+"18":"transparent",color:ac?C.accent:C.muted,fontWeight:ac?700:400}} onClick={()=>setBudgetCat(c.id)}><div>{c.label}</div><div style={{fontSize:11,opacity:0.7,marginTop:1}}>€{Math.round(s)} / €{Math.round(parseFloat(cd.limit)||0)}</div>{pctBar(p,5)}</button>);})}
-        </div>
-        <div>
-          <div style={card}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-              <div style={{fontSize:15,fontWeight:700}}>{BUDGET_CATS.find(c=>c.id===budgetCat)?.label}</div>
-              <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:12,color:C.muted}}>Presupuesto: €</span><input type="number" style={{...inp,width:90}} placeholder="0" value={cat.limit} onChange={e=>upd({...data,budget:{...data.budget,[budgetCat]:{...cat,limit:e.target.value}}})}/></div>
-            </div>
-            <div style={{marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.muted}}><span>€{spent.toFixed(2)} gastado</span><span style={{color:pct>90?"#f87171":C.muted}}>{Math.round(pct)}%</span></div>{pctBar(pct)}</div>
-            <div style={{background:C.surf2,borderRadius:8,padding:12,marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:600,color:C.muted,marginBottom:10}}>+ Agregar gasto</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <div style={{flex:2,minWidth:110}}><label style={lbl}>Descripción</label><input style={inp} placeholder="Entradas museo…" value={desc} onChange={e=>setDesc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addExp()}/></div>
-                <div style={{width:90}}><label style={lbl}>Monto (€)</label><input style={inp} type="number" placeholder="0.00" value={amt} onChange={e=>setAmt(e.target.value)}/></div>
-                <div style={{width:115}}><label style={lbl}>Pagó</label><select style={inp} value={payer} onChange={e=>setPayer(e.target.value)}><option value="">—</option>{data.travelers.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                <div style={{display:"flex",alignItems:"flex-end"}}><button style={btn("primary")} onClick={addExp}>Agregar</button></div>
-              </div>
-            </div>
-            {cat.expenses.length===0?<div style={{textAlign:"center",color:"#475569",padding:"20px 0",fontSize:13}}>Sin gastos registrados</div>:cat.expenses.map(e=>(
-              <div key={e.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
-                <div style={{flex:1,fontSize:13}}>{e.desc}</div><div style={{fontSize:12,color:C.muted}}>{e.payer}</div>
-                <div style={{fontSize:13,fontWeight:700,color:"#34d399"}}>€{parseFloat(e.amount).toFixed(2)}</div>
-                <button style={{...btn("danger"),padding:"3px 9px",fontSize:11}} onClick={()=>delExp(e.id)}>✕</button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+/* ── BUDGET TAB ──────────────────────────────────────────────── */
+function BudgetTab({
+  data,
+  upd,
+  budgetCat,
+  setBudgetCat
+}) {
+  const [desc, setDesc] = useState("");
+  const [amt, setAmt] = useState("");
+  const [payer, setPayer] = useState("");
+  const cat = data.budget[budgetCat] || {
+    limit: "",
+    expenses: []
+  };
+  const spent = cat.expenses.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  const totalBudg = Object.values(data.budget).reduce((s, c) => s + parseFloat(c.limit || 0), 0);
+  const totalSpent = Object.values(data.budget).reduce((s, c) => s + c.expenses.reduce((ss, e) => ss + parseFloat(e.amount || 0), 0), 0);
+  const pct = parseFloat(cat.limit) > 0 ? Math.min(100, spent / parseFloat(cat.limit) * 100) : 0;
+  const remaining = totalBudg - totalSpent;
+  const addExp = () => {
+    if (!desc || !amt) return;
+    const e = {
+      id: Date.now(),
+      desc,
+      amount: parseFloat(amt),
+      payer: payer || data.travelers[0],
+      date: new Date().toLocaleDateString("es")
+    };
+    upd({
+      ...data,
+      budget: {
+        ...data.budget,
+        [budgetCat]: {
+          ...cat,
+          expenses: [...cat.expenses, e]
+        }
+      }
+    });
+    setDesc("");
+    setAmt("");
+    setPayer("");
+  };
+  const delExp = id => upd({
+    ...data,
+    budget: {
+      ...data.budget,
+      [budgetCat]: {
+        ...cat,
+        expenses: cat.expenses.filter(e => e.id !== id)
+      }
+    }
+  });
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(4,1fr)",
+      gap: 14,
+      marginBottom: 20
+    }
+  }, [{
+    l: "Presupuesto total",
+    v: `€${Math.round(totalBudg)}`,
+    c: C.burg,
+    bg: C.burgLight,
+    icon: "🎯"
+  }, {
+    l: "Total gastado",
+    v: `€${Math.round(totalSpent)}`,
+    c: C.text,
+    bg: C.surf,
+    icon: "💸"
+  }, {
+    l: "Disponible",
+    v: `€${Math.round(remaining)}`,
+    c: remaining >= 0 ? C.green : C.red,
+    bg: remaining >= 0 ? C.greenLight : C.redLight,
+    icon: remaining >= 0 ? "✅" : "⚠️"
+  }, {
+    l: "Por persona",
+    v: `€${Math.round(totalSpent / 4)}`,
+    c: C.blue,
+    bg: C.blueLight,
+    icon: "👤"
+  }].map(s => /*#__PURE__*/React.createElement("div", {
+    key: s.l,
+    style: {
+      ...card,
+      marginBottom: 0,
+      background: s.bg,
+      border: `1px solid ${s.c}20`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      marginBottom: 6
+    }
+  }, s.icon, " ", s.l), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 26,
+      fontWeight: 700,
+      color: s.c,
+      fontFamily: "'Playfair Display',serif"
+    }
+  }, s.v), totalBudg > 0 && s.l === "Total gastado" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 4,
+      background: C.border,
+      borderRadius: 2,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: "100%",
+      width: `${Math.min(100, totalSpent / totalBudg * 100)}%`,
+      background: totalSpent > totalBudg ? C.red : C.green,
+      borderRadius: 2,
+      transition: "width 0.5s"
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      marginTop: 3
+    }
+  }, Math.round(totalSpent / totalBudg * 100), "% del presupuesto"))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "200px 1fr",
+      gap: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      padding: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      padding: "4px 10px 10px"
+    }
+  }, "Categorías"), BUDGET_CATS.map(c => {
+    const cd = data.budget[c.id] || {
+      limit: "",
+      expenses: []
+    };
+    const s = cd.expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+    const p = parseFloat(cd.limit) > 0 ? Math.min(100, s / parseFloat(cd.limit) * 100) : 0;
+    const ac = budgetCat === c.id;
+    return /*#__PURE__*/React.createElement("button", {
+      key: c.id,
+      onClick: () => setBudgetCat(c.id),
+      style: {
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        border: "none",
+        cursor: "pointer",
+        padding: "9px 10px",
+        borderRadius: 8,
+        fontSize: 14,
+        marginBottom: 2,
+        fontFamily: "'EB Garamond',serif",
+        borderLeft: ac ? `3px solid ${C.burg}` : "3px solid transparent",
+        background: ac ? C.burgLight : "transparent",
+        color: ac ? C.burg : C.textSec,
+        transition: "all 0.15s"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontWeight: ac ? 700 : 400
+      }
+    }, c.icon, " ", c.label), s > 0 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: C.textMut
+      }
+    }, "€", Math.round(s))), parseFloat(cd.limit) > 0 && /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: 3,
+        background: C.border,
+        borderRadius: 2,
+        overflow: "hidden",
+        marginTop: 5
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: "100%",
+        width: `${p}%`,
+        background: p > 90 ? C.red : p > 70 ? "#E67E22" : C.green,
+        borderRadius: 2
+      }
+    })));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: card
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 18
+    }
+  }, BUDGET_CATS.find(c => c.id === budgetCat)?.icon, " ", BUDGET_CATS.find(c => c.id === budgetCat)?.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: C.textMut
+    }
+  }, "Presupuesto:"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 4,
+      background: C.surf2,
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      padding: "4px 10px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.textMut,
+      fontSize: 14
+    }
+  }, "€"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    style: {
+      width: 80,
+      border: "none",
+      background: "transparent",
+      fontSize: 14,
+      fontWeight: 600,
+      color: C.text,
+      fontFamily: "'EB Garamond',serif",
+      outline: "none"
+    },
+    placeholder: "0",
+    value: cat.limit,
+    onChange: e => upd({
+      ...data,
+      budget: {
+        ...data.budget,
+        [budgetCat]: {
+          ...cat,
+          limit: e.target.value
+        }
+      }
+    })
+  })))), parseFloat(cat.limit) > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 16,
+      padding: "10px 14px",
+      background: pct > 90 ? C.redLight : pct > 70 ? "#FEF9ED" : C.greenLight,
+      borderRadius: 10,
+      border: `1px solid ${pct > 90 ? C.red + "30" : pct > 70 ? "#E67E2230" : C.green + "30"}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      fontSize: 13,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.textSec
+    }
+  }, "€", spent.toFixed(2), " gastado de €", parseFloat(cat.limit).toFixed(0)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      color: pct > 90 ? C.red : pct > 70 ? "#E67E22" : C.green
+    }
+  }, Math.round(pct), "%")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 8,
+      background: "rgba(0,0,0,0.08)",
+      borderRadius: 4,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: "100%",
+      width: `${pct}%`,
+      background: pct > 90 ? C.red : pct > 70 ? "#E67E22" : C.green,
+      borderRadius: 4,
+      transition: "width 0.5s"
+    }
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.surf2,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 16,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: C.textSec,
+      marginBottom: 12
+    }
+  }, "+ Registrar gasto"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "2fr 1fr 1fr auto",
+      gap: 8,
+      alignItems: "end"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Descripción"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    placeholder: "Ej: Cena en trattoria…",
+    value: desc,
+    onChange: e => setDesc(e.target.value),
+    onKeyDown: e => e.key === "Enter" && addExp()
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Monto (€)"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    type: "number",
+    placeholder: "0.00",
+    value: amt,
+    onChange: e => setAmt(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Pagó"), /*#__PURE__*/React.createElement("select", {
+    style: baseinp,
+    value: payer,
+    onChange: e => setPayer(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "—"), data.travelers.map(t => /*#__PURE__*/React.createElement("option", {
+    key: t,
+    value: t
+  }, t)))), /*#__PURE__*/React.createElement(Btn, {
+    v: "primary",
+    onClick: addExp
+  }, "Agregar"))), cat.expenses.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: "💳",
+    title: "Sin gastos aún",
+    desc: "Registra los gastos de esta categoría para llevar el control del presupuesto."
+  }) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr auto auto auto",
+      gap: 8,
+      padding: "6px 0",
+      borderBottom: `2px solid ${C.border}`,
+      fontSize: 11,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      color: C.textMut
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "Descripción"), /*#__PURE__*/React.createElement("span", null, "Pagó"), /*#__PURE__*/React.createElement("span", null, "Monto"), /*#__PURE__*/React.createElement("span", null)), cat.expenses.map(e => /*#__PURE__*/React.createElement("div", {
+    key: e.id,
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr auto auto auto",
+      gap: 8,
+      padding: "10px 0",
+      borderBottom: `1px solid ${C.border}`,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      color: C.text
+    }
+  }, e.desc), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut
+    }
+  }, e.date)), /*#__PURE__*/React.createElement(Badge, {
+    color: C.textMut
+  }, e.payer), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      fontWeight: 700,
+      color: C.text
+    }
+  }, "€", parseFloat(e.amount).toFixed(2)), /*#__PURE__*/React.createElement(Btn, {
+    v: "ghost",
+    small: true,
+    onClick: () => delExp(e.id),
+    style: {
+      color: C.red,
+      padding: "2px 8px",
+      fontSize: 16
+    }
+  }, "×"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "right",
+      padding: "10px 0",
+      fontSize: 14,
+      fontWeight: 700,
+      color: C.burg
+    }
+  }, "Total: €", spent.toFixed(2))))));
 }
 
-// ─── STAYS TAB ────────────────────────────────────────────────────
-function StaysTab({ data, upd }) {
-  const [active,setActive]=useState("madrid");
-  const stay=data.stays[active]||{};
-  const dest=DEST.find(d=>d.id===active);
-  const set=(f,v)=>upd({...data,stays:{...data.stays,[active]:{...stay,[f]:v}}});
-  const nights=()=>{if(!stay.checkIn||!stay.checkOut)return 0;return Math.max(0,Math.round((new Date(stay.checkOut)-new Date(stay.checkIn))/86400000));};
-  return (
-    <div style={{display:"grid",gridTemplateColumns:"185px 1fr",gap:16}}>
-      <div style={{...card,padding:8}}>
-        {DEST.map(d=>{const s=data.stays[d.id]||{};const ac=active===d.id;return(<button key={d.id} style={{display:"block",width:"100%",textAlign:"left",border:"none",cursor:"pointer",padding:"9px 10px",borderRadius:7,fontSize:12,marginBottom:3,borderLeft:ac?`2px solid ${d.color}`:"2px solid transparent",background:ac?d.color+"18":"transparent",color:ac?d.color:C.muted}} onClick={()=>setActive(d.id)}><div style={{fontWeight:700}}>{d.flag} {d.name}</div><div style={{fontSize:11,opacity:0.75,marginTop:1}}>{s.name||"Sin alojamiento"}</div>{s.pricePerNight&&<div style={{fontSize:11,opacity:0.6}}>€{s.pricePerNight}/noche</div>}</button>);})}
-      </div>
-      {dest&&<div style={{...card,borderTop:`3px solid ${dest.color}`}}>
-        <div style={{fontSize:15,fontWeight:700,marginBottom:16}}>{dest.flag} Alojamiento en {dest.name} <span style={{fontSize:12,color:C.muted,marginLeft:8}}>Días {dest.days[0]}–{dest.days[dest.days.length-1]}</span></div>
-        <div style={{display:"flex",gap:10,marginBottom:12}}><div style={{flex:2}}><label style={lbl}>Nombre</label><input style={inp} placeholder="Hotel NH Gran Vía" value={stay.name||""} onChange={e=>set("name",e.target.value)}/></div><div style={{flex:1}}><label style={lbl}>Tipo</label><select style={inp} value={stay.type||""} onChange={e=>set("type",e.target.value)}><option value="">—</option>{STAY_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></div></div>
-        <div style={{display:"flex",gap:10,marginBottom:12}}><div style={{flex:1}}><label style={lbl}>Check-in</label><input style={inp} type="date" value={stay.checkIn||""} onChange={e=>set("checkIn",e.target.value)}/></div><div style={{flex:1}}><label style={lbl}>Check-out</label><input style={inp} type="date" value={stay.checkOut||""} onChange={e=>set("checkOut",e.target.value)}/></div><div style={{flex:1}}><label style={lbl}>€/noche</label><input style={inp} type="number" placeholder="0" value={stay.pricePerNight||""} onChange={e=>set("pricePerNight",e.target.value)}/></div></div>
-        <div style={{marginBottom:12}}><label style={lbl}>Link</label><input style={inp} placeholder="https://…" value={stay.link||""} onChange={e=>set("link",e.target.value)}/></div>
-        <div style={{marginBottom:12}}><label style={lbl}>Notas</label><textarea style={ta} placeholder="Dirección, acceso, WiFi…" value={stay.notes||""} onChange={e=>set("notes",e.target.value)}/></div>
-        {stay.pricePerNight&&nights()>0&&<div style={{background:C.surf2,borderRadius:8,padding:"10px 14px",fontSize:13}}>💰 Costo estimado: <strong style={{color:"#34d399"}}>€{Math.round(parseFloat(stay.pricePerNight)*nights())}</strong> <span style={{color:"#a78bfa"}}>· €{Math.round(parseFloat(stay.pricePerNight)*nights()/4)} por persona</span></div>}
-      </div>}
-    </div>
-  );
+/* ── STAYS TAB ───────────────────────────────────────────────── */
+function StaysTab({
+  data,
+  upd
+}) {
+  const dests = data.destConfig || DEFAULT_DESTS;
+  const [active, setActive] = useState(dests[0]?.id || "madrid");
+  const stay = data.stays[active] || {};
+  const dest = dests.find(d => d.id === active);
+  const set = (f, v) => upd({
+    ...data,
+    stays: {
+      ...data.stays,
+      [active]: {
+        ...stay,
+        [f]: v
+      }
+    }
+  });
+  const nights = () => {
+    if (!stay.checkIn || !stay.checkOut) return 0;
+    return Math.max(0, Math.round((new Date(stay.checkOut) - new Date(stay.checkIn)) / 86400000));
+  };
+  const filled = dests.filter(d => {
+    const s = data.stays[d.id];
+    return s?.name;
+  }).length;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "220px 1fr",
+      gap: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      padding: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      padding: "4px 10px 10px"
+    }
+  }, "Destinos · ", filled, "/", dests.length, " confirmados"), dests.map(d => {
+    const s = data.stays[d.id] || {};
+    const ac = active === d.id;
+    const hasStay = !!s.name;
+    return /*#__PURE__*/React.createElement("button", {
+      key: d.id,
+      onClick: () => setActive(d.id),
+      style: {
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        border: "none",
+        cursor: "pointer",
+        padding: "10px 12px",
+        borderRadius: 10,
+        marginBottom: 4,
+        fontFamily: "'EB Garamond',serif",
+        background: ac ? d.color + "12" : C.surf2,
+        border: ac ? `1.5px solid ${d.color}30` : `1px solid ${C.border}`,
+        transition: "all 0.15s"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 18
+      }
+    }, d.flag), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontWeight: 700,
+        fontSize: 14,
+        color: ac ? d.color : C.text
+      }
+    }, d.name), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: C.textMut
+      }
+    }, hasStay ? s.name : "Sin confirmar")), hasStay && /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.green,
+        fontSize: 16
+      }
+    }, "✓")));
+  })), dest && /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      borderTop: `4px solid ${dest.color}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 20,
+      marginBottom: 20,
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
+  }, dest.flag, " Alojamiento en ", dest.name, /*#__PURE__*/React.createElement(Badge, {
+    color: dest.color
+  }, dest.nights, " noches")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "2fr 1fr",
+      gap: 12,
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Nombre del alojamiento"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    placeholder: "Hôtel du Petit Moulin, Airbnb Trastevere…",
+    value: stay.name || "",
+    onChange: e => set("name", e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Tipo"), /*#__PURE__*/React.createElement("select", {
+    style: baseinp,
+    value: stay.type || "",
+    onChange: e => set("type", e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Seleccionar…"), STAY_TYPES.map(t => /*#__PURE__*/React.createElement("option", {
+    key: t,
+    value: t
+  }, t))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr 1fr",
+      gap: 12,
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Check-in"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    type: "date",
+    value: stay.checkIn || "",
+    onChange: e => set("checkIn", e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Check-out"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    type: "date",
+    value: stay.checkOut || "",
+    onChange: e => set("checkOut", e.target.value)
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Precio por noche"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.textMut,
+      fontSize: 15,
+      flexShrink: 0
+    }
+  }, "€"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    type: "number",
+    placeholder: "0",
+    value: stay.pricePerNight || "",
+    onChange: e => set("pricePerNight", e.target.value)
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Link de reserva"), /*#__PURE__*/React.createElement("input", {
+    style: baseinp,
+    placeholder: "https://booking.com/…",
+    value: stay.link || "",
+    onChange: e => set("link", e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: lbl
+  }, "Notas del alojamiento"), /*#__PURE__*/React.createElement("textarea", {
+    style: baseta,
+    placeholder: "Dirección exacta, cómo llegar, código de entrada, WiFi, datos del anfitrión…",
+    value: stay.notes || "",
+    onChange: e => set("notes", e.target.value)
+  })), stay.pricePerNight && nights() > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: C.greenLight,
+      border: `1px solid ${C.green}30`,
+      borderRadius: 10,
+      padding: "12px 16px",
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      marginBottom: 3
+    }
+  }, "Costo total"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 700,
+      color: C.green,
+      fontFamily: "'Playfair Display',serif"
+    }
+  }, "€", Math.round(parseFloat(stay.pricePerNight) * nights()))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      marginBottom: 3
+    }
+  }, "Por persona"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 700,
+      color: C.blue,
+      fontFamily: "'Playfair Display',serif"
+    }
+  }, "€", Math.round(parseFloat(stay.pricePerNight) * nights() / 4))))));
 }
 
-// ─── TRANSPORT TAB ────────────────────────────────────────────────
-function TransportTab({ data, upd }) {
-  const setLeg=(id,f,v)=>upd({...data,transport:data.transport.map(t=>t.id===id?{...t,[f]:v}:t)});
-  const delLeg=(id)=>upd({...data,transport:data.transport.filter(t=>t.id!==id)});
-  const addLeg=()=>upd({...data,transport:[...data.transport,{id:`t${Date.now()}`,from:"madrid",to:"paris",type:"Vuelo",date:"",time:"",cost:"",booking:"",notes:""}]});
-  const total=data.transport.reduce((s,t)=>s+parseFloat(t.cost||0),0);
-  const opts=DEST.map(d=><option key={d.id} value={d.id}>{d.flag} {d.name}</option>);
-  return (
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><div style={{fontSize:13,color:C.muted}}>Total: <strong style={{color:"#34d399"}}>€{Math.round(total)}</strong> <span style={{marginLeft:8,color:"#a78bfa"}}>(€{Math.round(total/4)} por persona)</span></div><button style={btn("primary")} onClick={addLeg}>+ Agregar tramo</button></div>
-      {data.transport.map(leg=>{const fr=DEST.find(d=>d.id===leg.from);const to=DEST.find(d=>d.id===leg.to);return(
-        <div key={leg.id} style={card}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}><span style={{background:fr?.color+"30",color:fr?.color,borderRadius:5,padding:"2px 10px",fontSize:12,fontWeight:700}}>{fr?.flag} {fr?.name}</span><span style={{color:C.muted}}>→</span><span style={{background:to?.color+"30",color:to?.color,borderRadius:5,padding:"2px 10px",fontSize:12,fontWeight:700}}>{to?.flag} {to?.name}</span><button style={{...btn("danger"),padding:"3px 9px",fontSize:11,marginLeft:"auto"}} onClick={()=>delLeg(leg.id)}>✕</button></div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
-            <div><label style={lbl}>Desde</label><select style={inp} value={leg.from} onChange={e=>setLeg(leg.id,"from",e.target.value)}>{opts}</select></div>
-            <div><label style={lbl}>Hasta</label><select style={inp} value={leg.to} onChange={e=>setLeg(leg.id,"to",e.target.value)}>{opts}</select></div>
-            <div><label style={lbl}>Tipo</label><select style={inp} value={leg.type} onChange={e=>setLeg(leg.id,"type",e.target.value)}>{TRANSPORT_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-            <div><label style={lbl}>Fecha</label><input style={inp} type="date" value={leg.date||""} onChange={e=>setLeg(leg.id,"date",e.target.value)}/></div>
-            <div><label style={lbl}>Hora</label><input style={inp} type="time" value={leg.time||""} onChange={e=>setLeg(leg.id,"time",e.target.value)}/></div>
-            <div><label style={lbl}>Costo (€)</label><input style={inp} type="number" placeholder="0" value={leg.cost||""} onChange={e=>setLeg(leg.id,"cost",e.target.value)}/></div>
-          </div>
-          <div style={{marginTop:10}}><label style={lbl}>Reserva / aerolínea</label><input style={inp} placeholder="Código de reserva, compañía…" value={leg.booking||""} onChange={e=>setLeg(leg.id,"booking",e.target.value)}/></div>
-        </div>
-      );})}
-    </div>
-  );
+/* ── TRANSPORT TAB ───────────────────────────────────────────── */
+function TransportTab({
+  data,
+  upd
+}) {
+  const dests = data.destConfig || DEFAULT_DESTS;
+  const setLeg = (id, f, v) => upd({
+    ...data,
+    transport: data.transport.map(t => t.id === id ? {
+      ...t,
+      [f]: v
+    } : t)
+  });
+  const delLeg = id => upd({
+    ...data,
+    transport: data.transport.filter(t => t.id !== id)
+  });
+  const addLeg = () => upd({
+    ...data,
+    transport: [...data.transport, {
+      id: `t${Date.now()}`,
+      from: dests[0]?.id || "madrid",
+      to: dests[1]?.id || "paris",
+      type: "Vuelo",
+      date: "",
+      time: "",
+      cost: "",
+      booking: "",
+      notes: ""
+    }]
+  });
+  const total = data.transport.reduce((s, t) => s + parseFloat(t.cost || 0), 0);
+  const opts = dests.map(d => /*#__PURE__*/React.createElement("option", {
+    key: d.id,
+    value: d.id
+  }, d.flag, " ", d.name));
+  const typeIcons = {
+    "Vuelo": "✈️",
+    "Tren": "🚆",
+    "Bus": "🚌",
+    "Ferry": "⛴️",
+    "Auto": "🚗"
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...cardSm,
+      textAlign: "center",
+      padding: "10px 20px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      marginBottom: 3
+    }
+  }, "Total transportes"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 700,
+      color: C.burg,
+      fontFamily: "'Playfair Display',serif"
+    }
+  }, "€", Math.round(total))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...cardSm,
+      textAlign: "center",
+      padding: "10px 20px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: C.textMut,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      marginBottom: 3
+    }
+  }, "Por persona"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 700,
+      color: C.blue,
+      fontFamily: "'Playfair Display',serif"
+    }
+  }, "€", Math.round(total / 4)))), /*#__PURE__*/React.createElement(Btn, {
+    v: "primary",
+    onClick: addLeg
+  }, "+ Agregar tramo")), data.transport.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: "🚆",
+    title: "Sin tramos registrados",
+    desc: "Agrega los vuelos, trenes y buses de tu viaje para llevar un registro completo."
+  }, /*#__PURE__*/React.createElement(Btn, {
+    v: "primary",
+    onClick: addLeg
+  }, "+ Agregar primer tramo")) : data.transport.map(leg => {
+    const fr = dests.find(d => d.id === leg.from) || {
+      color: C.border,
+      flag: "",
+      name: leg.from || "Origen"
+    };
+    const to = dests.find(d => d.id === leg.to) || {
+      color: C.border,
+      flag: "",
+      name: leg.to || "Destino"
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      key: leg.id,
+      style: {
+        ...card,
+        borderLeft: `4px solid ${fr.color}`
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        marginBottom: 14
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 20
+      }
+    }, typeIcons[leg.type] || "🚗"), /*#__PURE__*/React.createElement(Badge, {
+      color: fr.color
+    }, fr.flag, " ", fr.name), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.textMut,
+        fontSize: 18
+      }
+    }, "→"), /*#__PURE__*/React.createElement(Badge, {
+      color: to.color
+    }, to.flag, " ", to.name), leg.cost && /*#__PURE__*/React.createElement(Badge, {
+      color: C.green
+    }, "€", leg.cost), /*#__PURE__*/React.createElement(Btn, {
+      v: "ghost",
+      small: true,
+      onClick: () => delLeg(leg.id),
+      style: {
+        marginLeft: "auto",
+        color: C.red,
+        padding: "2px 8px",
+        fontSize: 16
+      }
+    }, "×")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))",
+        gap: 10
+      }
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: lbl
+    }, "Desde"), /*#__PURE__*/React.createElement("select", {
+      style: baseinp,
+      value: leg.from || "",
+      onChange: e => setLeg(leg.id, "from", e.target.value)
+    }, opts)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: lbl
+    }, "Hasta"), /*#__PURE__*/React.createElement("select", {
+      style: baseinp,
+      value: leg.to || "",
+      onChange: e => setLeg(leg.id, "to", e.target.value)
+    }, opts)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: lbl
+    }, "Tipo"), /*#__PURE__*/React.createElement("select", {
+      style: baseinp,
+      value: leg.type || "Vuelo",
+      onChange: e => setLeg(leg.id, "type", e.target.value)
+    }, TRANSPORT_TYPES.map(t => /*#__PURE__*/React.createElement("option", {
+      key: t,
+      value: t
+    }, typeIcons[t], " ", t)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: lbl
+    }, "Fecha"), /*#__PURE__*/React.createElement("input", {
+      style: baseinp,
+      type: "date",
+      value: leg.date || "",
+      onChange: e => setLeg(leg.id, "date", e.target.value)
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: lbl
+    }, "Hora"), /*#__PURE__*/React.createElement("input", {
+      style: baseinp,
+      type: "time",
+      value: leg.time || "",
+      onChange: e => setLeg(leg.id, "time", e.target.value)
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      style: lbl
+    }, "Costo total (€)"), /*#__PURE__*/React.createElement("input", {
+      style: baseinp,
+      type: "number",
+      placeholder: "0",
+      value: leg.cost || "",
+      onChange: e => setLeg(leg.id, "cost", e.target.value)
+    }))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10
+      }
+    }, /*#__PURE__*/React.createElement("label", {
+      style: lbl
+    }, "N° de reserva / aerolínea / detalles"), /*#__PURE__*/React.createElement("input", {
+      style: baseinp,
+      placeholder: "Ej: AF1234, Air France, Terminal 2E…",
+      value: leg.booking || "",
+      onChange: e => setLeg(leg.id, "booking", e.target.value)
+    })));
+  }));
 }
 
-// ─── NOTES TAB ────────────────────────────────────────────────────
-function NotesTab({ data, upd }) {
-  const [newItem,setNewItem]=useState("");
-  const addItem=()=>{if(!newItem.trim())return;const item={id:Date.now(),text:newItem.trim(),done:false};upd({...data,notes:{...data.notes,checklist:[...(data.notes.checklist||[]),item]}});setNewItem("");};
-  const toggle=(id)=>upd({...data,notes:{...data.notes,checklist:data.notes.checklist.map(i=>i.id===id?{...i,done:!i.done}:i)}});
-  const del=(id)=>upd({...data,notes:{...data.notes,checklist:(data.notes.checklist||[]).filter(i=>i.id!==id)}});
-  const setTraveler=(i,v)=>{const t=[...data.travelers];t[i]=v;upd({...data,travelers:t});};
-  const pending=(data.notes.checklist||[]).filter(i=>!i.done);
-  const done=(data.notes.checklist||[]).filter(i=>i.done);
-  return (
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-      <div>
-        <div style={card}><div style={{fontSize:14,fontWeight:700,marginBottom:12}}>📝 Notas generales</div><textarea style={{...ta,minHeight:190}} placeholder="Info importante: seguros, contactos, documentos…" value={data.notes.general||""} onChange={e=>upd({...data,notes:{...data.notes,general:e.target.value}})}/></div>
-        <div style={card}><div style={{fontSize:14,fontWeight:700,marginBottom:12}}>👥 Viajeros</div>{data.travelers.map((t,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{width:28,height:28,borderRadius:"50%",background:[C.accent,"#4ECDC4","#FFE66D","#F38181"][i]+"30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{["😎","🤩","🥳","🫡"][i]}</div><input style={{...inp,flex:1}} value={t} placeholder={`Viajero ${i+1}`} onChange={e=>setTraveler(i,e.target.value)}/></div>))}</div>
-        <div style={{...card,border:`1px solid ${C.accent}40`,background:"#1a3a5c"}}>
-          <div style={{fontSize:14,fontWeight:700,color:C.accent,marginBottom:8}}>🌐 URL para compartir</div>
-          <div style={{fontSize:12,color:C.muted,lineHeight:1.8}}>Comparte la dirección del servidor con tus compañeros.<br/>Deben estar conectados a la <strong style={{color:C.text}}>misma red WiFi</strong>.<br/>Todos ven y editan los mismos datos en tiempo real.</div>
-        </div>
-      </div>
-      <div style={card}>
-        <div style={{fontSize:14,fontWeight:700,marginBottom:12}}>✅ Lista de tareas</div>
-        <div style={{display:"flex",gap:8,marginBottom:16}}><input style={{...inp,flex:1}} placeholder="Nueva tarea… (Enter)" value={newItem} onChange={e=>setNewItem(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addItem()}/><button style={{...btn("primary"),padding:"7px 14px"}} onClick={addItem}>+</button></div>
-        {pending.length===0&&done.length===0&&<div style={{textAlign:"center",color:"#475569",padding:"30px 0",fontSize:13}}>Sin tareas 🎉</div>}
-        {pending.map(item=>(<div key={item.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}><input type="checkbox" checked={false} onChange={()=>toggle(item.id)} style={{marginTop:2,cursor:"pointer",accentColor:C.accent,width:16,height:16,flexShrink:0}}/><span style={{flex:1,fontSize:13,lineHeight:1.5}}>{item.text}</span><button style={{...btn("danger"),padding:"2px 8px",fontSize:11}} onClick={()=>del(item.id)}>✕</button></div>))}
-        {done.length>0&&<><div style={{fontSize:11,color:"#475569",textTransform:"uppercase",letterSpacing:1,margin:"14px 0 6px"}}>Completadas ({done.length})</div>{done.map(item=>(<div key={item.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"7px 0",borderBottom:`1px solid ${C.border}`,opacity:0.45}}><input type="checkbox" checked={true} onChange={()=>toggle(item.id)} style={{marginTop:2,cursor:"pointer",accentColor:C.accent,width:16,height:16,flexShrink:0}}/><span style={{flex:1,fontSize:13,textDecoration:"line-through"}}>{item.text}</span><button style={{...btn("danger"),padding:"2px 8px",fontSize:11}} onClick={()=>del(item.id)}>✕</button></div>))}</>}
-      </div>
-    </div>
-  );
+/* ── NOTES TAB ───────────────────────────────────────────────── */
+function NotesTab({
+  data,
+  upd
+}) {
+  const [newItem, setNewItem] = useState("");
+  const addItem = () => {
+    if (!newItem.trim()) return;
+    const item = {
+      id: Date.now(),
+      text: newItem.trim(),
+      done: false
+    };
+    upd({
+      ...data,
+      notes: {
+        ...data.notes,
+        checklist: [...(data.notes.checklist || []), item]
+      }
+    });
+    setNewItem("");
+  };
+  const toggle = id => upd({
+    ...data,
+    notes: {
+      ...data.notes,
+      checklist: data.notes.checklist.map(i => i.id === id ? {
+        ...i,
+        done: !i.done
+      } : i)
+    }
+  });
+  const del = id => upd({
+    ...data,
+    notes: {
+      ...data.notes,
+      checklist: (data.notes.checklist || []).filter(i => i.id !== id)
+    }
+  });
+  const setTraveler = (i, v) => {
+    const t = [...data.travelers];
+    t[i] = v;
+    upd({
+      ...data,
+      travelers: t
+    });
+  };
+  const pending = (data.notes.checklist || []).filter(i => !i.done);
+  const done = (data.notes.checklist || []).filter(i => i.done);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: card
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 18,
+      marginBottom: 14
+    }
+  }, "📝 Notas del grupo"), /*#__PURE__*/React.createElement("textarea", {
+    style: {
+      ...baseta,
+      minHeight: 200
+    },
+    placeholder: "Información importante para todos: seguros de viaje, contactos de emergencia, documentos necesarios, tarjetas de crédito, SIM cards…",
+    value: data.notes.general || "",
+    onChange: e => upd({
+      ...data,
+      notes: {
+        ...data.notes,
+        general: e.target.value
+      }
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    style: card
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 18,
+      marginBottom: 14
+    }
+  }, "👥 Viajeros"), data.travelers.map((t, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 36,
+      height: 36,
+      borderRadius: "50%",
+      background: [C.burgLight, C.blueLight, C.goldLight, C.greenLight][i],
+      border: `2px solid ${[C.burg, C.blue, C.gold, C.green][i]}30`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 18,
+      flexShrink: 0
+    }
+  }, ["😎", "🤩", "🥳", "🫡"][i]), /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...baseinp,
+      flex: 1
+    },
+    value: t,
+    placeholder: `Nombre del viajero ${i + 1}`,
+    onChange: e => setTraveler(i, e.target.value)
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...card,
+      background: C.blueLight,
+      border: `1px solid ${C.blue}20`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 15,
+      color: C.blue,
+      marginBottom: 6
+    }
+  }, "🔗 Compartir con tus compañeros"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      color: C.textSec,
+      lineHeight: 1.7
+    }
+  }, "Envíales este link para que accedan al planificador:", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("strong", {
+    style: {
+      color: C.blue
+    }
+  }, "https://viaje-planner.onrender.com"), /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: C.textMut
+    }
+  }, "Todos editan los mismos datos en tiempo real.")))), /*#__PURE__*/React.createElement("div", {
+    style: card
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Playfair Display',serif",
+      fontSize: 18,
+      marginBottom: 14,
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "✅ Lista de tareas"), done.length > 0 && /*#__PURE__*/React.createElement(Badge, {
+    color: C.green
+  }, done.length, " completadas")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...baseinp,
+      flex: 1
+    },
+    placeholder: "Nueva tarea (Enter para agregar)…",
+    value: newItem,
+    onChange: e => setNewItem(e.target.value),
+    onKeyDown: e => e.key === "Enter" && addItem()
+  }), /*#__PURE__*/React.createElement(Btn, {
+    v: "primary",
+    onClick: addItem
+  }, "+")), pending.length === 0 && done.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: "✅",
+    title: "Sin tareas aún",
+    desc: "Agrega cosas por hacer: reservar vuelos, renovar pasaporte, pedir visas…"
+  }) : /*#__PURE__*/React.createElement("div", null, pending.map(item => /*#__PURE__*/React.createElement("div", {
+    key: item.id,
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "10px 0",
+      borderBottom: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: false,
+    onChange: () => toggle(item.id),
+    style: {
+      marginTop: 3,
+      cursor: "pointer",
+      accentColor: C.burg,
+      width: 17,
+      height: 17,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1,
+      fontSize: 15,
+      lineHeight: 1.5,
+      color: C.text
+    }
+  }, item.text), /*#__PURE__*/React.createElement(Btn, {
+    v: "ghost",
+    small: true,
+    onClick: () => del(item.id),
+    style: {
+      color: C.red,
+      padding: "2px 8px",
+      fontSize: 16
+    }
+  }, "×"))), done.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 600,
+      textTransform: "uppercase",
+      letterSpacing: "0.7px",
+      color: C.textMut,
+      marginBottom: 8
+    }
+  }, "Completadas"), done.map(item => /*#__PURE__*/React.createElement("div", {
+    key: item.id,
+    style: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "8px 0",
+      borderBottom: `1px solid ${C.border}`,
+      opacity: 0.5
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: true,
+    onChange: () => toggle(item.id),
+    style: {
+      marginTop: 3,
+      cursor: "pointer",
+      accentColor: C.burg,
+      width: 17,
+      height: 17,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1,
+      fontSize: 15,
+      textDecoration: "line-through",
+      color: C.textSec
+    }
+  }, item.text), /*#__PURE__*/React.createElement(Btn, {
+    v: "ghost",
+    small: true,
+    onClick: () => del(item.id),
+    style: {
+      color: C.red,
+      padding: "2px 8px",
+      fontSize: 16
+    }
+  }, "×")))))));
 }
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
 </body>
 </html>
