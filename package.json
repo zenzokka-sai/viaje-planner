@@ -1,13 +1,20 @@
 {
   "name": "viaje-europa-marruecos",
   "version": "1.0.0",
-  "description": "Planificador de viaje Europa & Marruecos",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "build": "node build.js",
+    "start": "node server.js",
+    "dev": "node build.js && node server.js"
   },
   "dependencies": {
     "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0",
+    "@babel/plugin-transform-optional-chaining": "^7.24.0",
+    "@babel/plugin-transform-nullish-coalescing-operator": "^7.24.0",
+    "@babel/plugin-transform-async-to-generator": "^7.24.0"
   },
   "engines": {
     "node": ">=18.0.0"
